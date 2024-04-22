@@ -409,6 +409,7 @@ class  SerialMonitor(QMainWindow):
             if "Enter New Serial No" in self.data:
                 self.test.setEnabled(False)
                 self.calibrate_ai.setEnabled(False)
+                self.exit.setEnabled(False)
                 self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
 
         elif currentState == STATE.CONFIGBUTTON.value:
@@ -419,6 +420,7 @@ class  SerialMonitor(QMainWindow):
             if "-->Inside Test Mode" in self.data:
                 self.config.setEnabled(False)
                 self.calibrate_ai.setEnabled(False)
+                self.exit.setEnabled(False)
                 self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
         
         elif currentState == STATE.TESTRTC.value:
@@ -649,6 +651,7 @@ class  SerialMonitor(QMainWindow):
             if "please wait" in self.data:
                 self.config.setEnabled(False)
                 self.test.setEnabled(False)
+                self.exit.setEnabled(False)
 
         elif currentState == STATE.EXITNORMALLY.value:
             self.statusbar.showMessage(self.data) 
@@ -722,7 +725,7 @@ class  SerialMonitor(QMainWindow):
         currentState = STATE.CONFIGUREMODE.value
         if self.configWindow is None:
             # Send the appropriate command to the serial thread
-            self.serial_thread.send_data('2' + chr(0xA))
+            self.serial_thread.send_data('2' + "/n")
 
             # Create a new instance of ConfigWindow
             self.configWindow = ConfigWindow()
@@ -734,7 +737,7 @@ class  SerialMonitor(QMainWindow):
             self.statusbar.showMessage("Entered into the Configuration Mode")
         else:
             # If ConfigWindow already exists, simply set it as the central widget
-            self.serial_thread.send_data('2' + chr(0xA))
+            self.serial_thread.send_data('2' + "/n")
             self.statusbar.showMessage("Entered into the Configuration Mode")
             self.configWindow = ConfigWindow()
             self.setCentralWidget(self.configWindow)
@@ -749,15 +752,15 @@ class  SerialMonitor(QMainWindow):
         if self.testWindow is None:
             # Create a new instance of TestWindow
             self.serial_thread.send_data('1' + "\n")
-            self.testWindow = TestWindow(self.serial_thread, self.image_load, self.statusbar,parent=self)
+            self.testWindow = TestWindow(self.terminalWindow, self.serial_thread, self.image_load, self.statusbar,parent=self)
             # Set the TestWindow as the central widget
             self.setCentralWidget(self.testWindow)
             self.statusbar.showMessage("Entered into the Test Mode")
             # self.testWindow.show_gif_AfterPressingButton.movie_label.setVisible(False)
         else:
-            self.serial_thread.send_data('1' + "\n")
+            # self.serial_thread.send_data('1' + "\n")
             self.statusbar.showMessage("Entered into the Test Mode")
-            self.testWindow = TestWindow(self.serial_thread, self.image_load, self.statusbar,parent=self)
+            self.testWindow = TestWindow(self.terminalWindow, self.serial_thread, self.image_load, self.statusbar,parent=self)
             # self.testWindow.show_gif_AfterPressingButton.movie_label.setVisible(False)
 
             # Set the TestWindow as the central widget
@@ -782,7 +785,7 @@ class  SerialMonitor(QMainWindow):
             self.setCentralWidget(self.calibrateAIWindow)
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
         else:
-            self.serial_thread.send_data('3' + "\n")
+            # self.serial_thread.send_data('3' + "\n")
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
             self.calibrateAIWindow = CalibrateAIWindow()
             self.setCentralWidget(self.calibrateAIWindow)
@@ -1273,7 +1276,7 @@ class ConfigWindow(QWidget):
         
         # Perform time-consuming operations in a separate thread
         threading.Thread(target=self.send_configuration_data).start()
-        currentState = STATE.CONFIGBUTTON.value
+        currentState = STATE.CONNECTED.value
 
     def send_configuration_data(self):
         # if "Enter New Serial No" in self.parent().data:
@@ -1370,12 +1373,13 @@ class PasswordLineEdit(QWidget):
 
 class TestWindow(QWidget):
     """To test the functionalities of the firmware which is uploaded into the hardware."""
-    def  __init__(self , serial_thread, image_load, statusbar, parent = None):
+    def  __init__(self , terminalWindow, serial_thread, image_load, statusbar, parent = None):
         super().__init__(parent)
 
         self.statusbar = statusbar
         self.serial_thread = serial_thread
         self.image_load = image_load
+        self.terminalWindow = terminalWindow
 
         layout = QGridLayout()
 
@@ -1648,14 +1652,12 @@ class TestWindow(QWidget):
         self.serial_thread.send_data("2" + "\n")
         currentState = STATE.TESTGSM.value
 
-
     def test_WiFi(self):
         global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
         self.serial_thread.send_data("3" + "\n")
         currentState = STATE.TESTWIFI.value
-
 
     def test_Ethernet(self):
         global currentState
@@ -1664,14 +1666,12 @@ class TestWindow(QWidget):
         self.serial_thread.send_data("4" + "\n")
         currentState = STATE.TESTETH.value
 
-
     def test_SDCard(self):
         global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
         self.serial_thread.send_data("5" + "\n")
         currentState = STATE.TESTSD.value
-
 
     def test_ModbusRTU(self):
         global currentState
@@ -1680,14 +1680,12 @@ class TestWindow(QWidget):
         self.serial_thread.send_data("6" + "\n")
         currentState = STATE.TESTMODRTU.value
 
-
     def test_ModbusTCP(self):
         global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
         self.serial_thread.send_data("7" + "\n")
         currentState = STATE.TESTMODTCP.value
-
 
     def test_DI(self):
         pass
