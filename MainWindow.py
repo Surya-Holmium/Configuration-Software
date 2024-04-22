@@ -1,19 +1,44 @@
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, \
      QLineEdit, QPushButton, QComboBox, QMainWindow, QHBoxLayout,QMessageBox, \
-     QWidgetAction, QFileDialog, QTextEdit, QToolBar, QStatusBar, QDialog, QSizePolicy, \
-     QGraphicsOpacityEffect, QDialogButtonBox, QVBoxLayout, QCheckBox
+     QWidgetAction, QFileDialog, QTextEdit, QToolBar, QStatusBar, QSizePolicy, \
+     QGraphicsOpacityEffect, QCheckBox
 
 import threading
 import sys
-from PyQt6.QtGui import QAction, QIcon, QPainter, QMovie, QColor
+from PyQt6.QtGui import QAction, QIcon, QPainter, QMovie, QPixmap, QColor
 from serial.tools.list_ports import comports
-from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QSettings, QRect, Qt
+from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QSettings, QRect, Qt, QSize
 import serial
 import subprocess
 import time
 import re
 from openpyxl import Workbook, load_workbook
 import datetime
+from functools import partial
+import os
+
+from enum import Enum
+
+class STATE(Enum):
+    CONNECTED = 1
+    DISCONNECTED = 2
+    TESTMODE = 3
+    CONFIGUREMODE = 4
+    CALIBRATEAI = 5
+    CONFIGBUTTON = 6
+    TESTRTC = 7
+    TESTGSM = 8
+    TESTWIFI = 9
+    TESTETH = 10
+    TESTSD = 11
+    TESTMODRTU = 12
+    TESTMODTCP = 13
+    TESTALL = 14
+    EXITNORMALLY = 15
+
+
+
+currentState = STATE.DISCONNECTED.value
 
 
 class HandPointerMessageBox(QMessageBox):
@@ -59,7 +84,6 @@ class SerialThread(QThread):
         def send_data(self, data):
             try:
                 if self.running:
-                    print(data)
                     self.ser.write(data.encode(encoding="utf-8"))
             except Exception as e:
                 print(f"Error sending data: {e}")
@@ -84,11 +108,27 @@ class UploadThread(QThread):
             self.output_received.emit(line.strip())
 
 
+class ImageLoader:
+    def load_image(self, filename):
+        try:
+            filepath = sys._MEIPASS
+        except Exception:
+            filepath = os.path.abspath(".")
+        return QPixmap(os.path.join(filepath, filename))
+    
+    def load_gif(self, filename):
+        try:
+            filepath = sys._MEIPASS
+        except Exception:
+            filepath = os.path.abspath(".")
+        return QMovie(os.path.join(filepath, filename))
+
+
 class  SerialMonitor(QMainWindow):
     def __init__(self):
         super().__init__()
         try:
-            self.setWindowTitle("Upload Firmware To The Device")
+            self.setWindowTitle("HRMS Test & Config Utility")
             self.setMinimumSize(600, 400)
 
             self.statusbar = self.statusBar()
@@ -96,6 +136,7 @@ class  SerialMonitor(QMainWindow):
             self.terminalWindow = None  # Initialize terminal window reference
             self.configWindow = None
             self.testWindow = None
+            self.calibrateAIWindow = None
 
             connection_action = QWidget(self)
             self.setCentralWidget(connection_action)
@@ -119,6 +160,18 @@ class  SerialMonitor(QMainWindow):
 
             self.scan_USBPort()
 
+
+            self.baudrate = QComboBox()
+            self.baudrate.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.baudrate.setStyleSheet("background-color: white;")
+            # self.baudrate.setPlaceholderText("Select Baudrate...")
+            layout.addWidget(self.baudrate)
+            baudrates = ["115200", "9600"]
+            for baudrate in baudrates:
+                self.baudrate.addItem(baudrate)
+
+            self.addBaudrateToMenuBar()
+
             self.connect_button_menu = self.menuBar().addMenu('&Connection')
             self.connect_button_menu.setCursor(Qt.CursorShape.PointingHandCursor)
             self.connect_button_menu.setStyleSheet("background-color: white; color: black;")
@@ -134,17 +187,6 @@ class  SerialMonitor(QMainWindow):
             disconnect_button.triggered.connect(self.on_disconnect_clicked)
             disconnect_button.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             disconnect_button.hovered.connect(lambda: QApplication.restoreOverrideCursor())
-
-            self.baudrate = QComboBox()
-            self.baudrate.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.baudrate.setStyleSheet("background-color: white;")
-            self.baudrate.setPlaceholderText("Select Baudrate...")
-            layout.addWidget(self.baudrate)
-            baudrates = ["9600", "115200"]
-            for baudrate in baudrates:
-                self.baudrate.addItem(baudrate)
-
-            self.addBaudrateToMenuBar()
 
             self.help_menu_item = self.menuBar().addMenu('&Help')
             self.help_menu_item.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -167,7 +209,7 @@ class  SerialMonitor(QMainWindow):
             program.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
 
-            self.config = QAction("Configure", self)
+            self.config = QAction("Configure Device", self)
             self.config.setEnabled(False)  # Disable the action initially
             self.config.triggered.connect(self.configureDevice)
             self.config.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
@@ -191,7 +233,10 @@ class  SerialMonitor(QMainWindow):
             self.exit.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             self.exit.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-            serialbutton = QAction(QIcon("D:\Student_ManagementSystem_UsingPyQt\icon\magnifying-glass.png"),"SerialButton", self)
+            self.image_load = ImageLoader()
+            icon = QIcon(self.image_load.load_image("icon\magnifying-glass.png"))
+
+            serialbutton = QAction(icon,"SerialButton", self)
             serialbutton.triggered.connect(self.openTerminalWindow)
             serialbutton.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             serialbutton.hovered.connect(lambda: QApplication.restoreOverrideCursor())
@@ -218,8 +263,11 @@ class  SerialMonitor(QMainWindow):
             self.statusbar = QStatusBar()
             self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 16px;")
             self.setStatusBar(self.statusbar)
+            
+            window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
+            self.setWindowIcon(window_icon)
 
-            self.programWindow = ProgramWindow()
+            self.programWindow = ProgramWindow(self.image_load, self.statusbar)
             # self.programWindow.setStyleSheet("background-color: #D3F4FB;")
             # self.setCentralWidget(self.programWindow)
 
@@ -288,7 +336,8 @@ class  SerialMonitor(QMainWindow):
         self.selected_port = self.comboBox.currentText()
         self.selected_baudrate = self.baudrate.currentText()
         # print("port = ",self.selected_port)
-
+        global currentState
+        currentState = STATE.CONNECTED.value
         # Check if a port is selected
         if not self.selected_port:
             msg_box = HandPointerMessageBox()
@@ -318,9 +367,18 @@ class  SerialMonitor(QMainWindow):
             msg_box.setText("Error", f"Error connecting to the device: {str(e)}")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
+        # time.sleep(10)
+        # self.serial_thread.send_data("Hol" +"\n")
+
+        threading.Thread(target=self.send_data_toGetMode).start()
+
+    def send_data_toGetMode(self):
+        time.sleep(2)
+        self.serial_thread.send_data("Hol" + "\n")
 
     def on_data_received(self, data):
         # Append received data to the QTextEdit box of TerminalWindow
+        global currentState
         self.data = data
         print(self.data)
         try:
@@ -329,149 +387,299 @@ class  SerialMonitor(QMainWindow):
                     self.terminalWindow.serial_text.append(self.data)
         except AttributeError as e:
             print(f"Attribute Error in terminal window method call: {str(e)}")
+        if currentState == STATE.CONNECTED.value:
 
-        if "Enter 1: TO ENTER TEST MODE" in self.data:
-            self.config.setEnabled(True)
-            self.test.setEnabled(True)
-            self.calibrate_ai.setEnabled(True)
-            self.exit.setEnabled(True)
-            self.statusbar.clearMessage()
+            if "Enter 1: TO ENTER TEST MODE" in self.data:
+                self.config.setEnabled(True)
+                self.test.setEnabled(True)
+                self.calibrate_ai.setEnabled(True)
+                self.exit.setEnabled(True)
+                self.statusbar.clearMessage()
 
-        if "Done configuring...starting Kernel mode" in self.data:
+                if self.calibrateAIWindow is not None:
+                    self.calibrateAIWindow.close()
+                    self.calibrateAIWindow = None
+                elif self.testWindow is not None:
+                    self.testWindow.close()  # Close the testWindow if it's open
+                    self.testWindow = None  # Reset the reference to None after closing
+                else:
+                    pass
+
+        elif  currentState == STATE.CONFIGUREMODE.value:
+            if "Enter New Serial No" in self.data:
+                self.test.setEnabled(False)
+                self.calibrate_ai.setEnabled(False)
+                self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
+
+        elif currentState == STATE.CONFIGBUTTON.value:
+            if "device data saved successfully" in self.data:
+                self.statusbar.showMessage("Device Configuration Successful")
+
+        elif currentState == STATE.TESTMODE.value:
+            if "-->Inside Test Mode" in self.data:
+                self.config.setEnabled(False)
+                self.calibrate_ai.setEnabled(False)
+                self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
+        
+        elif currentState == STATE.TESTRTC.value:
+            if ">>> Testing RTC <<<" in self.data:
+                self.testWindow.testrtc.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+
+            elif ">>> RTC Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testrtc.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+                    
+            elif ">>> RTC Test Failed! <<<" in self.data:
+                self.testWindow.testrtc.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+        
+        elif currentState == STATE.TESTGSM.value:
+            if ">>> Testing GSM <<<" in self.data:
+                self.testWindow.testgsm.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+
+            elif ">>> GSM Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testgsm.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+
+            elif ">>> GSM Test Failed! <<<" in self.data:
+                self.testWindow.testgsm.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+
+        elif currentState == STATE.TESTWIFI.value:
+            if ">>> Testing WiFi <<<" in self.data:
+                self.testWindow.testwifi.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            
+            elif ">>> WiFi Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testwifi.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            elif ">>> WiFi Test Failed! <<<" in self.data:
+                self.testWindow.testwifi.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+
+        elif currentState == STATE.TESTETH.value:
+            if ">>> Testing Ethernet <<<" in self.data:
+                self.testWindow.testethernet.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            
+            elif ">>> Ethernet Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testethernet.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            elif ">>> Ethernet Test Failed! <<<" in self.data:
+                self.testWindow.testethernet.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+
+        elif currentState == STATE.TESTSD.value:
+            if ">>> Testing SD Card <<<" in self.data:
+                self.testWindow.testsdcard.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            
+            elif ">>> SD Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testsdcard.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            elif ">>> SD Test Failed! <<<" in self.data:
+                self.testWindow.testsdcard.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+            
+        elif currentState == STATE.TESTMODRTU.value:
+            if ">>> Testing Modbus RTU 1 <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            
+            elif ">>> Modbus RTU 1 Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                # currentState = STATE.TESTMODE.value
+            elif ">>> Modbus RTU 1 Test Failed! <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                # currentState = STATE.TESTMODE.value
+
+            elif ">>> Testing Modbus RTU 2 <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+
+            elif ">>> Modbus RTU 2 Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            elif ">>> Modbus RTU 2 Test Failed! <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+
+        elif currentState == STATE.TESTMODTCP.value:
+            if ">>> Testing Modbus TCP <<<" in self.data:
+                self.testWindow.testmodbustcp.setStyleSheet("QPushButton {background-color: #EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+
+            elif ">>> Modbus TCP Test OK <<<" in self.data:
+                self.statusbar.clearMessage()
+                self.testWindow.testmodbustcp.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            elif ">>> Modbus TCP Test Failed! <<<" in self.data:
+                self.testWindow.testmodbustcp.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_label.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+                
+        elif currentState == STATE.TESTALL.value:
+            if ">>> Testing All <<<" in self.data:
+                self.testWindow.testrtc.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+                self.testWindow.testgsm.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+                self.testWindow.testwifi.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+                self.testWindow.testethernet.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+                self.testWindow.testsdcard.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+                self.testWindow.testmodbusrtu.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+                self.testWindow.testmodbustcp.setStyleSheet("QPushButton {background-color:#FFFFFF; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+
+            elif ">>> Testing RTC <<<" in self.data:
+                self.testWindow.testrtc.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> RTC Test OK <<<" in self.data:
+                self.testWindow.testrtc.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")                   
+            elif ">>> RTC Test Failed! <<<" in self.data:
+                self.testWindow.testrtc.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+
+            elif ">>> Testing GSM <<<" in self.data:
+                self.testWindow.testgsm.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> GSM Test OK <<<" in self.data:
+                self.testWindow.testgsm.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> GSM Test Failed! <<<" in self.data:
+                self.testWindow.testgsm.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+
+            elif ">>> Testing WiFi <<<" in self.data:
+                self.testWindow.testwifi.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}") 
+            elif ">>> WiFi Test OK <<<" in self.data:
+                self.testWindow.testwifi.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> WiFi Test Failed! <<<" in self.data:
+                self.testWindow.testwifi.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4;  font-weight: bold; font-size: 18px;")
+
+            elif ">>> Testing Ethernet <<<" in self.data:
+                self.testWindow.testethernet.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> Ethernet Test OK <<<" in self.data:
+                self.testWindow.testethernet.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> Ethernet Test Failed! <<<" in self.data:
+                self.testWindow.testethernet.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4;  font-weight: bold; font-size: 18px;")
+
+            elif ">>> Testing SD Card <<<" in self.data:
+                self.testWindow.testsdcard.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> SD Test OK <<<" in self.data:
+                self.testWindow.testsdcard.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> SD Test Failed! <<<" in self.data:
+                self.testWindow.testsdcard.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+
+            elif ">>> Testing Modbus RTU 1 <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> Modbus RTU 1 Test OK <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> Modbus RTU 1 Test Failed! <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+            elif ">>> Testing Modbus RTU 2 <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> Modbus RTU 2 Test OK <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> Modbus RTU 2 Test Failed! <<<" in self.data:
+                self.testWindow.testmodbusrtu.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+
+            elif ">>> Testing Modbus TCP <<<" in self.data:
+                self.testWindow.testmodbustcp.setStyleSheet("QPushButton {background-color:#EBE846; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;}")
+            elif ">>> Modbus TCP Test OK <<<" in self.data:
+                self.testWindow.testmodbustcp.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+            elif ">>> Modbus TCP Test Failed! <<<" in self.data:
+                self.testWindow.testmodbustcp.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
+            
+            elif ">>> All Tests Done <<<" in self.data:
+                self.statusbar.showMessage("All Tests Done, Please, do the separete test for each test module if you find any error in the test Modules.")
+                # self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
+                self.testWindow.movie_testAll.setVisible(False)
+                currentState = STATE.TESTMODE.value
+            else:
+                self.statusbar.clearMessage()
+                self.statusbar.showMessage(self.data)
+
+        elif currentState == STATE.CALIBRATEAI.value:
+            if "please wait" in self.data:
+                self.config.setEnabled(False)
+                self.test.setEnabled(False)
+
+        elif currentState == STATE.EXITNORMALLY.value:
+            self.statusbar.showMessage(self.data) 
+            
+    def on_disconnect_clicked(self):
+        """Closes the current connection"""
+        global currentState
+        currentState  = STATE.DISCONNECTED.value
+        if self.serial_thread and hasattr(self.serial_thread, 'isRunning') and self.serial_thread.isRunning():
+            self.serial_thread.stop()
+            self.connection_open = False
+            self.config.setEnabled(False)
+            self.test.setEnabled(False)
+            self.calibrate_ai.setEnabled(False)
+            self.exit.setEnabled(False)
+            self.statusbar.showMessage("Disconnected")
+            # self.testWindow.movie_label.setVisible(False)
+
             if self.configWindow is not None:
                 self.configWindow.close()
+                self.configWindow = None
+            elif self.calibrateAIWindow is not None:
+                self.calibrateAIWindow.close()
+                self.calibrateAIWindow = None
             elif self.testWindow is not None:
-                self.testWindow.movie_label.setVisible(False)
-                self.testWindow.close()
+                self.testWindow.close()  # Close the testWindow if it's open
+                self.testWindow = None  # Reset the reference to None after closing
             else:
                 pass
 
-            self.config.setEnabled(False)
-            self.test.setEnabled(False)
-            self.calibrate_ai.setEnabled(False)
-            self.exit.setEnabled(False)
-            self.statusbar.clearMessage()
-            self.on_disconnect_clicked()
-            self.on_connect_clicked()
-            # time.sleep(15)
-
-            # threading.Thread(target=self.show_main_window).start()
-
-        if "-->Inside Test Mode" in self.data:
-            self.config.setEnabled(False)
-            self.calibrate_ai.setEnabled(False)
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
-        
-        if "Enter New Serial No" in self.data:
-            self.test.setEnabled(False)
-            self.calibrate_ai.setEnabled(False)
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
-
-        if "please wait" in self.data:
-            self.config.setEnabled(False)
-            self.test.setEnabled(False)
-            
-        if "device data saved successfully" in self.data:
-            self.statusbar.showMessage("Device Configuration Successful")
-
-        if "---------------- RTC Test OK ----------------" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testrtc.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif ">>> RTC Test Failed... <<<" in self.data:
-            self.testWindow.testrtc.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("RTC Initialization Failed, Please check It")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-        if "------------------ SD Test OK -----------------" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testsdcard.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "Initialization failed...!" in self.data:
-            self.testWindow.testsdcard.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("SD Card Initialization Failed, Please check the SD Card")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "File creation Failed...!" in self.data:
-            self.testWindow.testsdcard.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("SD Card Initialization Failed, Please check the SD Card")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-        if "---------------- Ethernet Test OK ----------------" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testethernet.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "Ethernet Initailization failed...!" in self.data:
-            self.testWindow.testethernet.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("Ethernet Initialization Failed, Please check the Ethernet Connection")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-        if "------------------- GSM Test OK ------------------" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testgsm.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "Internet check Failed...!" in self.data:
-            self.testWindow.testgsm.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("GSM Internet Checking Failed, Please check the Antena Connection")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "Network check Failed...!" in self.data:
-            self.testWindow.testgsm.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("GSM Internet Checking Failed, Please check the Antena Connection")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-        if "------------------ WiFi Test OK ------------------" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testwifi.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "........................................................... WiFi failed to connect...!" in self.data:
-            self.testWindow.testwifi.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("WiFi Failed to connect, Please check the WiFi")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "WiFi Network Not Available...!" in self.data:
-            self.testWindow.testwifi.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("WiFi Failed to connect, Please check the WiFi Antena Connection")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-        if "--------------- Modbus TCP Test OK ---------------" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testmodbustcp.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.testWindow.movie_label.setVisible(False)
-        elif "Ethernet Port Initialization Failed...!" in self.data:
-            self.testWindow.testmodbustcp.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("Ethernet Port Initialization Failed, Please check the IP, Port and Baudrate")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-        if "Modbus RTU Test OK!!!!" in self.data:
-            self.statusbar.clearMessage()
-            self.testWindow.testmodbusrtu.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-        elif "Modbus RTU Test Failed...!" in self.data:
-            self.testWindow.testmodbusrtu.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-            self.statusbar.showMessage("Ethernet Port Initialization Failed, Please check the IP, Port and Baudrate")
-            self.statusbar.setStyleSheet("background-color: #D4F1F4; color: red;  font-weight: bold; font-size: 18px;")
-            self.testWindow.movie_label.setVisible(False)
-
-    def on_disconnect_clicked(self):
-        """Closes the current connection"""
-        # self.testWindow.movie_label.setVisible(False)
-        if self.serial_thread and hasattr(self.serial_thread, 'isRunning') and self.serial_thread.isRunning():
-            self.serial_thread.stop()
-            # self.terminalWindow.serial_text.append("Disconnected\n")
-            self.connection_open = False
-            self.config.setEnabled(False)
-            self.test.setEnabled(False)
-            self.calibrate_ai.setEnabled(False)
-            self.exit.setEnabled(False)
-            self.statusbar.showMessage("Disconnected")
         elif self.serial_thread:
-            # self.terminalWindow.serial_text.append("Disconnected\n")
             self.connection_open = False
             self.connection_open = False
             self.config.setEnabled(False)
@@ -479,6 +687,19 @@ class  SerialMonitor(QMainWindow):
             self.calibrate_ai.setEnabled(False)
             self.exit.setEnabled(False)
             self.statusbar.showMessage("Disconnected")
+            # self.testWindow.movie_label.setVisible(False)
+
+            if self.configWindow is not None:
+                self.configWindow.close()
+                self.configWindow = None
+            elif self.calibrateAIWindow is not None:
+                self.calibrateAIWindow.close()
+                self.calibrateAIWindow = None
+            elif self.testWindow is not None:
+                self.testWindow.close()  # Close the testWindow if it's open
+                self.testWindow = None  # Reset the reference to None after closing
+            else:
+                pass
         else:
             self.show_warning_message("Warning", "No active connection to disconnect.")
 
@@ -490,35 +711,57 @@ class  SerialMonitor(QMainWindow):
         msg_box.exec()
 
     def programFW(self):
-        self.programWindow = ProgramWindow()
-        # self.programWindow.setStyleSheet("background-color: #D3F4FB;")
+        self.programWindow = ProgramWindow(self.image_load, self.statusbar)
         self.setCentralWidget(self.programWindow)
         if self.terminalWindow is not None:
             self.terminalWindow.deleteLater()
             self.terminalWindow = None
 
     def configureDevice(self):
-        self.serial_thread.send_data('2' + "\n")
-        if not hasattr(self, 'config_message'):
-            self.statusbar.showMessage("Entered into the Coniguration Mode")
+        global currentState
+        currentState = STATE.CONFIGUREMODE.value
+        if self.configWindow is None:
+            # Send the appropriate command to the serial thread
+            self.serial_thread.send_data('2' + chr(0xA))
 
-        self.configWindow = ConfigWindow()
-        self.setCentralWidget(self.configWindow)
+            # Create a new instance of ConfigWindow
+            self.configWindow = ConfigWindow()
+            
+            # Show the ConfigWindow
+            self.setCentralWidget(self.configWindow)
+            
+            # Show status message
+            self.statusbar.showMessage("Entered into the Configuration Mode")
+        else:
+            # If ConfigWindow already exists, simply set it as the central widget
+            self.serial_thread.send_data('2' + chr(0xA))
+            self.statusbar.showMessage("Entered into the Configuration Mode")
+            self.configWindow = ConfigWindow()
+            self.setCentralWidget(self.configWindow)
+
         if self.terminalWindow is not None:
             self.terminalWindow.deleteLater()
             self.terminalWindow = None
 
     def testDevice(self):
-        self.serial_thread.send_data('1' + "\n")
-        if not hasattr(self, 'test_message'):
+        global currentState
+        currentState = STATE.TESTMODE.value
+        if self.testWindow is None:
+            # Create a new instance of TestWindow
+            self.serial_thread.send_data('1' + "\n")
+            self.testWindow = TestWindow(self.serial_thread, self.image_load, self.statusbar,parent=self)
+            # Set the TestWindow as the central widget
+            self.setCentralWidget(self.testWindow)
             self.statusbar.showMessage("Entered into the Test Mode")
+            # self.testWindow.show_gif_AfterPressingButton.movie_label.setVisible(False)
+        else:
+            self.serial_thread.send_data('1' + "\n")
+            self.statusbar.showMessage("Entered into the Test Mode")
+            self.testWindow = TestWindow(self.serial_thread, self.image_load, self.statusbar,parent=self)
+            # self.testWindow.show_gif_AfterPressingButton.movie_label.setVisible(False)
 
-        # Create a new instance of TestWindow
-        self.testWindow = TestWindow(self.serial_thread, self.statusbar,parent=self)
-        self.testWindow.movie_label.setVisible(False)
-
-        # Set the TestWindow as the central widget
-        self.setCentralWidget(self.testWindow)
+            # Set the TestWindow as the central widget
+            self.setCentralWidget(self.testWindow)
 
 
         if self.terminalWindow is not None:
@@ -531,47 +774,63 @@ class  SerialMonitor(QMainWindow):
         self.setCentralWidget(self.terminalWindow)
 
     def calibrate_AI(self):
-        self.serial_thread.send_data('3' + "\n")
-        if not hasattr(self, 'calibrate_message'):
+        global currentState
+        currentState = STATE.CALIBRATEAI.value
+        if  self.calibrateAIWindow is None:
+            self.serial_thread.send_data('3' + "\n")
+            self.calibrateAIWindow = CalibrateAIWindow()
+            self.setCentralWidget(self.calibrateAIWindow)
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
+        else:
+            self.serial_thread.send_data('3' + "\n")
+            self.statusbar.showMessage("Entered into the Calibration AI Mode")
+            self.calibrateAIWindow = CalibrateAIWindow()
+            self.setCentralWidget(self.calibrateAIWindow)
 
-        self.calibrateAIWindow = CalibrateAIWindow()
-        self.setCentralWidget(self.calibrateAIWindow)
         if self.terminalWindow is not None:
             self.terminalWindow.deleteLater()
             self.terminalWindow = None
 
     def exit_All(self):
+        global currentState
+        currentState = STATE.EXITNORMALLY.value
         self.serial_thread.send_data('4' + "\n")
         self.config.setEnabled(False)
         self.test.setEnabled(False)
         self.calibrate_ai.setEnabled(False)
         self.exit.setEnabled(False)
 
-    def show_main_window(self):
-        # time.sleep(15)
-        if "Enter 1: TO ENTER TEST MODE" in self.data:
-            self.serial_thread.send_data("2" + "\n")
-            if "Enter New Serial No" in self.data:
-                self.test.setEnabled(False)
-                self.calibrate_ai.setEnabled(False)
-                self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
-            
+        self.statusbar.showMessage(self.data)
+
+        if self.configWindow is not None:
+            self.configWindow.close()
+            self.configWindow = None
+        elif self.calibrateAIWindow is not None:
+            self.calibrateAIWindow.close()
+            self.calibrateAIWindow = None
+        elif self.testWindow is not None:
+            self.testWindow.close()  # Close the testWindow if it's open
+            self.testWindow = None  # Reset the reference to None after closing
+        else:
+            pass
+
 
 class AboutDialog(QMessageBox):
     def  __init__(self):
         super().__init__()
         self.setWindowTitle("About")
         content = """
-Hello There! This GUI is developed to load the firmware in respective  modules of the RoboClaw board using a USB-Serial converter. The code is open source.\
+Hello There! This GUI is developed to load the firmware in respective  modules of the DataLogger board using a USB-Serial converter. The code is open source.\
 If this code need further changes please do that and push the update version of this code on Github.
 """
         self.setText(content)
 
 
 class ProgramWindow(QWidget):
-    def __init__(self):
+    def __init__(self, image_load, statusbar):
         super().__init__()
+        self.image_load = image_load
+        self.statusbar = statusbar 
 
         # self.checkboxes = []
         self.selected_file_paths = []
@@ -599,7 +858,7 @@ class ProgramWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -622,7 +881,7 @@ class ProgramWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -703,7 +962,7 @@ class ProgramWindow(QWidget):
 
         else:
             # Command to execute
-            command = f'esptool --port {port} write_flash 0x1000 {filename}'
+            command = f'esptool --port {port} write_flash 0x0000 {filename}'
 
             # Start the upload in a separate thread
             self.upload_thread = UploadThread(command)
@@ -713,26 +972,24 @@ class ProgramWindow(QWidget):
     def update_text_area(self, line):
         error_list = ["A fatal error occurred: Failed to connect to Espressif device: No serial data received.",
                       "A serial exception error occurred: Cannot configure port, something went wrong. Original message: PermissionError(13, 'Access is denied.', None, 5)",
-                      "A fatal error occurred: The chip stopped responding.", "A serial exception error occurred: Write timeout"]
+                      "A fatal error occurred: The chip stopped responding.", "A serial exception error occurred: Write timeout", \
+                      "A fatal error occurred: Failed to connect to Espressif device: Download mode successfully detected, but getting no sync reply: The serial TX path seems to be down."]
 
         # Append the output line to the QTextEdit box
         self.text_area.append(line)
-
         # Create QLabel for icon and message if they don't exist
         if not hasattr(self, 'icon_label'):
             self.icon_label = QLabel()
             self.message_label = QLabel()
-            self.parent().statusbar.addWidget(self.icon_label)
-            self.parent().statusbar.addWidget(self.message_label)
-            # self.icon_label.setVisible(False)
-            # self.message_label.setVisible(False)
+            self.statusbar.addWidget(self.icon_label)
+            self.statusbar.addWidget(self.message_label)
 
         # Update icon and message based on the content of text_data
         if "Connecting...." in line:
-            # self.icon_label.setVisible(True)
-            # self.message_label.setVisible(True)
-            self.icon_label.setPixmap(QIcon("D:/Student_ManagementSystem_UsingPyQt/icon/icons8-waiting-50.png").pixmap(40, 40))
-            self.message_label.setText("Writing")
+            self.image = self.image_load.load_image("icon\icons8-waiting-50.png").scaled(30, 30)
+
+            self.icon_label.setPixmap(self.image)
+            self.message_label.setText("Writing...")
             self.message_label.setStyleSheet("color: darkblack; font-family: times; font-size: 20px;")
 
             # Create opacity effect
@@ -748,36 +1005,51 @@ class ProgramWindow(QWidget):
             self.fade_animation.setLoopCount(-1)  # Infinite loop
             self.fade_animation.start()
 
-            # self.icon_label.setVisible(False)
-            # self.message_label.setVisible(False)
+        if "Hash of data verified." in line:
+            self.statusbar.removeWidget(self.icon_label)
+            self.statusbar.removeWidget(self.message_label)
 
         elif "Leaving..." in line:
-
-            # self.icon_label.setVisible(True)
-            # self.message_label.setVisible(True)
 
             # Stop the rotation animation
             self.fade_animation.stop()
 
-            self.icon_label.setPixmap(QIcon("D:/Student_ManagementSystem_UsingPyQt/icon/icons8-success-94.png").pixmap(30, 30))
-            self.message_label.setText("Success")
-            self.message_label.setStyleSheet("color: green; font-family: times; font-size: 20px;")
-
-            time.sleep(5)
-
-            self.icon_label.setVisible(False)
-            self.message_label.setVisible(False)
+            self.success_image = self.image_load.load_image("icon\icons8-success-94.png").scaled(30, 30)
+            self.successs_message ="Success"
+            self.icon = self.show_temporary_image(self.success_image, self.successs_message, duration=3000)
 
         for error in error_list:
             if error in line:
-                self.icon_label.setVisible(True)
-                self.message_label.setVisible(True)
-                self.icon_label.setPixmap(QIcon("D:\Student_ManagementSystem_UsingPyQt\icon\icons8-error-94.png").pixmap(30, 30))
-                self.message_label.setText("Error")
-                self.message_label.setStyleSheet("color: red; font-family: times; font-size: 20px;")
-                time.sleep(10)
-                self.icon_label.setVisible(False)
-                self.message_label.setVisible(False)
+    
+                self.error_image = self.image_load.load_image("icon\icons8-error-94.png").scaled(30, 30)
+                self.error_message = "Error"
+                self.icon = self.show_temporary_image(self.error_image, self.error_message, duration=3000)
+
+    def show_temporary_image(self, image, message, duration):
+        """Show an image and then hide it after a specified duration."""
+
+        icon_label = QLabel()
+        message_label = QLabel()
+        icon_label.setPixmap(image)
+        message_label.setText(message)
+        if message == self.successs_message:
+            message_label.setStyleSheet("color: green; font-family: times; font-size: 20px;")
+        elif message == self.error_image:
+            message_label.setStyleSheet("color: red; font-family: times; font-size: 20px;")
+        else:
+            pass
+
+        self.statusbar.addWidget(icon_label)
+        self.statusbar.addWidget(message_label)
+
+        # Use a QTimer to remove the label after the specified duration
+        timer = QTimer(self)
+        timer.singleShot(duration, lambda: self.statusbar.removeWidget(icon_label))
+        timer.singleShot(duration, lambda: self.statusbar.removeWidget(message_label))
+        timer.start()
+
+        return icon_label
+
 
     def save_settings(self):
         # Save selected file paths, checkbox states, and deleted checkboxes to settings
@@ -810,7 +1082,8 @@ class DeleteableCheckBox(QCheckBox):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.deleteIcon = QIcon("D:/Student_ManagementSystem_UsingPyQt/icon/icons8-delete-16.png")
+        self.delete_image = ImageLoader()
+        self.deleteIcon = self.delete_image.load_image("icon\icons8-delete-16.png")
 
     def paintEvent(self, event):
         # Call the base class paintEvent to draw the checkbox
@@ -823,7 +1096,7 @@ class DeleteableCheckBox(QCheckBox):
             deleteIconX = self.width() - deleteIconSize - 4
             deleteIconY = (self.height() - deleteIconSize) / 2
             deleteIconRect = QRect(int(deleteIconX), int(deleteIconY), deleteIconSize, deleteIconSize)
-            self.deleteIcon.paint(painter, deleteIconRect, Qt.AlignmentFlag.AlignCenter, QIcon.Mode.Normal, QIcon.State.Off)
+            painter.drawPixmap(deleteIconRect, self.deleteIcon)
 
     def mousePressEvent(self, event):
         if self.isChecked():
@@ -886,6 +1159,7 @@ class ConfigWindow(QWidget):
         self.configured_by = QLineEdit()
         self.configured_by.setPlaceholderText("Enter Your Name")
         self.configured_by.setStyleSheet("background-color: white;")
+        self.configured_by.setPlaceholderText("Enter Your Name")
         layout.addWidget(configured, 3, 0)
         layout.addWidget(self.configured_by, 3, 1)
 
@@ -901,7 +1175,7 @@ class ConfigWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -910,27 +1184,27 @@ class ConfigWindow(QWidget):
         configure.clicked.connect(self.on_configure_clicked)
         layout.addWidget(configure,  4, 3)
 
-        export_to_excel = QPushButton("Export to CSV")
-        export_to_excel.setStyleSheet(
-                    """
-            QPushButton {
-                background-color: white;
-                border: None;
-                border-radius: 20px; 
-                padding: 8px 16px;
-                font-size: 18px;
-            }
+        # export_to_excel = QPushButton("Export to CSV")
+        # export_to_excel.setStyleSheet(
+        #             """
+        #     QPushButton {
+        #         background-color: white;
+        #         border: None;
+        #         border-radius: 20px; 
+        #         padding: 8px 16px;
+        #         font-size: 18px;
+        #     }
 
-            QPushButton:hover {
-                background-color: #C3CEDA; 
-                border-color: grey; 
-            }
-            """
-        )
-        export_to_excel.setCursor(Qt.CursorShape.PointingHandCursor)
-        export_to_excel.setToolTip('Save data as a csv file')
-        layout.addWidget(export_to_excel, 4, 0)
-        export_to_excel.clicked.connect(self.save_dataToCSVFile)
+        #     QPushButton:hover {
+        #         background-color: #FFFFFF; 
+        #         border-color: grey; 
+        #     }
+        #     """
+        # )
+        # export_to_excel.setCursor(Qt.CursorShape.PointingHandCursor)
+        # export_to_excel.setToolTip('Save data as a csv file')
+        # layout.addWidget(export_to_excel, 4, 0)
+        # export_to_excel.clicked.connect(self.save_dataToCSVFile)
 
         self.setLayout(layout)
 
@@ -946,7 +1220,7 @@ class ConfigWindow(QWidget):
         
     def on_configure_clicked(self):
         # print("configure clicked")
-
+        global currentState
         if not self.device_combo.currentText():
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
@@ -968,13 +1242,38 @@ class ConfigWindow(QWidget):
         if self.password.password_edit.text() != "HO-1810":
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
-            msg_box.setText("Incorrect password. Please enter the correct password."   )
+            msg_box.setText("Incorrect password. Please enter the correct password." )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
             return
         
+        if not self.configured_by.text():
+            msg_box = HandPointerMessageBox()
+            msg_box.setWindowTitle("Warning")
+            msg_box.setText("Please enter Your Name.")
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.exec()
+            return
+        
+        """Save data from GUI elements into CSV file"""
+        filename = "ConfigurationData.xlsx"
+        timestamp = datetime.datetime.now()
+        # Format timestamp as string
+        formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        serial_number = self.serial_no.text()
+        device_type = self.device_combo.currentText()
+        testing = "OK"
+        configured = self.configured_by.text()
+
+        data = [["Date Time", "Serial Number", "Model Number", "Testing", "Configured and Tested By"],
+                [formatted_timestamp, serial_number, device_type, testing, configured]
+               ]
+
+        self.write_into_excel(filename, data)
+        
         # Perform time-consuming operations in a separate thread
         threading.Thread(target=self.send_configuration_data).start()
+        currentState = STATE.CONFIGBUTTON.value
 
     def send_configuration_data(self):
         # if "Enter New Serial No" in self.parent().data:
@@ -993,23 +1292,11 @@ class ConfigWindow(QWidget):
         model_number = self.device_combo.currentIndex() + 1 
         self.parent().serial_thread.send_data(str(model_number) + "\n")
 
-    def save_dataToCSVFile(self):
+        threading.Thread(target = self.send_data_after_Configuration).start()
 
-        """Save data from GUI elements into CSV file"""
-        filename = "ConfigurationData.xlsx"
-        timestamp = datetime.datetime.now()
-        # Format timestamp as string
-        formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        serial_number = self.serial_no.text()
-        device_type = self.device_combo.currentText()
-        testing = "OK"
-        configured = self.configured_by.text()
-
-        data = [["TimeStamp", "Serial Number", "Model Number", "Testing", "Configured and Tested By"],
-                [formatted_timestamp, serial_number, device_type, testing, configured]
-               ]
-
-        self.write_into_excel(filename, data)
+    def send_data_after_Configuration(self):
+        time.sleep(5)
+        self.parent().serial_thread.send_data("Hol" + "\n")
 
     def  write_into_excel(self, filename, data):
         try:
@@ -1033,17 +1320,22 @@ class ConfigWindow(QWidget):
         # Save the workbook
         workbook.save(filename)
 
+        self.parent().statusbar.showMessage("Data saved successfully!")
+
 
 class PasswordLineEdit(QWidget):
     def __init__(self):
         super().__init__()
+
+        self.password_image = ImageLoader()
         
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.textChanged.connect(self.toggle_eye_visibility)
 
         self.show_password_button = QPushButton()
-        self.show_password_button.setIcon(QIcon("D:\Student_ManagementSystem_UsingPyQt\icon\icons8-eye-24.png"))
+        icon = QIcon(self.password_image.load_image("icon\icons8-eye-24.png"))
+        self.show_password_button.setIcon(icon)
         self.show_password_button.setStyleSheet("border: None; padding: 0px; background-color: transparent")
         self.show_password_button.setCheckable(True)
         self.show_password_button.toggled.connect(self.toggle_password_visibility)
@@ -1077,23 +1369,37 @@ class PasswordLineEdit(QWidget):
 
 
 class TestWindow(QWidget):
-
-    # # Define signals for test completion
-    # test_RTC_completed = pyqtSignal()
-    # test_GSM_completed = pyqtSignal()
-    # test_WiFi_completed = pyqtSignal()
-    # test_Ethernet_completed = pyqtSignal()
-    # test_SDCard_completed = pyqtSignal()
-    # test_ModbusRTU_completed = pyqtSignal()
-    # test_ModbusTCP_completed = pyqtSignal()
-
-    def  __init__(self , serial_thread, statusbar, parent = None):
+    """To test the functionalities of the firmware which is uploaded into the hardware."""
+    def  __init__(self , serial_thread, image_load, statusbar, parent = None):
         super().__init__(parent)
 
         self.statusbar = statusbar
         self.serial_thread = serial_thread
+        self.image_load = image_load
 
         layout = QGridLayout()
+
+        self.movie_label = QLabel()
+        self.movie = self.image_load.load_gif("icon\icons8-spinner.gif")
+        self.movie.setScaledSize(QSize(50, 50))  
+        self.movie.setSpeed(100)
+        self.movie.start()
+        self.movie_label.setMovie(self.movie)
+        # self.movie_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.movie_label.setVisible(False)
+        self.statusbar.addPermanentWidget(self.movie_label, 0)
+
+    
+        # Initialize QLabel for movie_test
+        self.movie_testAll = QLabel()
+        self.movie_test = self.image_load.load_gif("icon\icons8-spinner.gif")
+        self.movie_test.setScaledSize(QSize(50, 50))  # Set a smaller size
+        self.movie_test.setSpeed(100)  # Set the frame rate (lower value means slower)
+        self.movie_test.start()
+        self.movie_testAll.setMovie(self.movie_test)
+        # self.movie_testAll.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.movie_testAll.setVisible(False)
+        self.statusbar.addPermanentWidget(self.movie_testAll, 0)
 
         self.testrtc = QPushButton("Test RTC")
         self.testrtc.setStyleSheet(
@@ -1107,7 +1413,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1128,7 +1434,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1149,7 +1455,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1170,7 +1476,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1191,7 +1497,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1212,7 +1518,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1233,7 +1539,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1254,7 +1560,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1275,7 +1581,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1296,7 +1602,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1317,7 +1623,7 @@ class TestWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1326,77 +1632,62 @@ class TestWindow(QWidget):
         layout.addWidget(exittestmode, 5, 1)
         exittestmode.clicked.connect(self.exit_Test_mode)
 
-        self.movie = QMovie("D:\Student_ManagementSystem_UsingPyQt\icon\spinner.gif")
-        self.movie_label = QLabel()
-        self.movie_label.setMovie(self.movie)
-        self.statusbar.addWidget(self.movie_label)
-        self.movie_label.setStyleSheet("background-color: transparent;")
-        self.movie_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.movie_label.setVisible(False)
-        self.movie.start()
-
         self.setLayout(layout)
 
-        self.data = self.parent().data
-
     def test_RTC(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('1' + "\n")
-        # self.test_RTC_completed.emit()
-        # if ("---------------- RTC Test OK ----------------" or ">>> RTC Test Failed... <<<") in self.parent().data:
-            # return True
-        
-        # return self.parent().data
-
+        self.serial_thread.send_data("1" + "\n")
+        currentState = STATE.TESTRTC.value
 
     def test_GSM(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('2' + "\n")
+        self.serial_thread.send_data("2" + "\n")
+        currentState = STATE.TESTGSM.value
 
-        # self.test_GSM_completed.emit()
-        return True
 
     def test_WiFi(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('3' + "\n")
+        self.serial_thread.send_data("3" + "\n")
+        currentState = STATE.TESTWIFI.value
 
-        # self.test_WiFi_completed.emit()
-        return True
 
     def test_Ethernet(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('4' + "\n")
+        self.serial_thread.send_data("4" + "\n")
+        currentState = STATE.TESTETH.value
 
-        # self.test_Ethernet_completed.emit()
-        return True
 
     def test_SDCard(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('5' + "\n")
+        self.serial_thread.send_data("5" + "\n")
+        currentState = STATE.TESTSD.value
 
-        # self.test_SDCard_completed.emit()
-        return True
 
     def test_ModbusRTU(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('6' + "\n")
+        self.serial_thread.send_data("6" + "\n")
+        currentState = STATE.TESTMODRTU.value
 
-        # self.test_ModbusRTU_completed.emit()
-        return True
 
     def test_ModbusTCP(self):
+        global currentState
         self.statusbar.clearMessage()
         self.movie_label.setVisible(True)
-        self.serial_thread.send_data('7' + "\n")
+        self.serial_thread.send_data("7" + "\n")
+        currentState = STATE.TESTMODTCP.value
 
-        # self.test_ModbusTCP_completed.emit()
-        return True
 
     def test_DI(self):
         pass
@@ -1405,100 +1696,18 @@ class TestWindow(QWidget):
         pass
 
     def test_All(self):
-        # if self.movie_label.setVisible(True):
-        #     self.movie_label.setVisible(False)
-        # else:
-        #     self.movie_label.setVisible(True)
-
-        # dialog = TestAllDialog(self.data, self.serial_thread, self.statusbar, parent = self)
-        # if dialog.exec() == QDialog.DialogCode.Accepted:
-        #     print("OK button clicked")
-        # else:
-        #     print("Cancel button clicked")
-        # dialog.exec()
-        self.test_RTC()
-        threading.Thread(target = self.on_pressed_t).start()
-
-    def  on_pressed_t(self):
-        time.sleep(10)
-        # if self.test_RTC:
-        # if ("---------------- RTC Test OK ----------------" or ">>> RTC Test Failed... <<<") in self.parent().data:
-        self.test_GSM()
-        # # if  self.test_GSM:
-        # self.test_WiFi()
-        # # if  self.test_WiFi:
-        # self.test_Ethernet()
-        # # if self.test_Ethernet:
-        # self.test_SDCard()
-        # # if self.test_SDCard:
-        # self.test_ModbusRTU()
-        # # if self.test_ModbusRTU:
-        # self.test_ModbusTCP()
+        global currentState
+        currentState = STATE.TESTALL.value
+        self.statusbar.clearMessage()
+        self.movie_testAll.setVisible(True)
+        self.serial_thread.send_data("8" + "\n")
 
     def exit_Test_mode(self):
+        global currentState
+        currentState = STATE.CONNECTED.value
         self.movie_label.setVisible(False)
-        self.parent().statusbar.clearMessage()
-        self.serial_thread.send_data('8' + "\n")
-
-
-# class TestAllDialog(QDialog):
-#     def __init__(self, data, serial_thread, statusbar, parent=None):
-#         super().__init__(parent)
-#         self.statusbar = statusbar
-#         self.serial_thread = serial_thread
-#         self.data = data
-#         print(self.data)
-#         self.setWindowTitle("Test All Devices")
-#         self.setFixedWidth(500)
-#         self.setFixedHeight(300)
-
-#         # Create OK and Cancel buttons
-#         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-#         self.buttonBox = QDialogButtonBox(buttons)
-#         self.buttonBox.accepted.connect(self.accept)
-#         self.buttonBox.rejected.connect(self.reject)
-
-#         self.layout = QVBoxLayout()
-#         message = QLabel("Something happened, is that OK?")
-#         self.layout.addWidget(message)
-#         self.layout.addWidget(self.buttonBox)
-#         self.setLayout(self.layout)
-
-#         self.testall = TestWindow(self.serial_thread, self.statusbar, parent=self)
-
-#         # Start the tests
-#         QTimer.singleShot(0, self.run_tests)
-
-#     def run_tests(self):
-#         # Start with the first test
-#         self.testall.test_RTC()
-#         if self.testall.test_RTC:
-#             self.testall.test_RTC_completed.connect(self.testGSM)
-
-#     def testGSM(self):
-#         self.testall.test_GSM()
-#         self.testall.test_GSM_completed.connect(self.testWiFi)
-
-#     def testWiFi(self):    
-#         self.testall.test_WiFi()
-#         self.testall.test_WiFi_completed.connect(self.testEthernet)
-
-#     def testEthernet(self):
-#         self.testall.test_Ethernet()
-#         self.testall.test_Ethernet_completed.connect(self.testSDCard)
-
-#     def testSDCard(self):
-#         self.testall.test_SDCard()
-#         self.testall.test_SDCard_completed.connect(self.testModbusRTU)
-
-#     def testModbusRTU(self):
-#         self.testall.test_ModbusRTU()
-#         self.testall.test_SDCard_completed.connect(self.testModbusRTU)
-
-#     def testModbusTCP(self):
-#         self.testall.test_ModbusTCP()  
-
-#         self.testall.test_ModbusTCP_completed.connect(self.close)
+        self.statusbar.clearMessage()
+        self.serial_thread.send_data("9" + "\n")
 
 
 class CalibrateAIWindow(QWidget):
@@ -1548,7 +1757,7 @@ class CalibrateAIWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1570,7 +1779,7 @@ class CalibrateAIWindow(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #C3CEDA; 
+                background-color: #FFFFFF; 
                 border-color: grey; 
             }
             """
@@ -1585,8 +1794,6 @@ class CalibrateAIWindow(QWidget):
         self.channel_no = self.channel_number.currentText()
         self.scale_val = self.scale_value.text()
         self.offset_val = self.offset_value.text()
-        
-        # print(type(str(int(float(self.scale_val)*100))))
 
         if not self.channel_no:
             msg_box = HandPointerMessageBox()
@@ -1615,16 +1822,21 @@ class CalibrateAIWindow(QWidget):
         threading.Thread(target=self._on_calibrate_pressed).start()
     
     def _on_calibrate_pressed(self):
-        self.serial_thread.send_data(self.channel_no + "\n")
+        self.parent().serial_thread.send_data(self.channel_no + "\n")
         time.sleep(2)
 
-        self.serial_thread.send_data(str(int(float(self.scale_val)*100)) + "\n")
+        self.parent().serial_thread.send_data(str(int(float(self.scale_val)*100)) + "\n")
         time.sleep(4)
 
-        self.serial_thread.send_data(str(int(float(self.offset_val)*100)) + "\n")
+        self.parent().serial_thread.send_data(str(int(float(self.offset_val)*100)) + "\n")
+
+        time.sleep(3)
+        self.parent().statusbar.showMessage("Calibration AI Done!")
 
     def exit_from_Calibration(self):
-        self.serial_thread.send_data("9" + "\n")
+        global currentState
+        currentState = STATE.CONNECTED.value
+        self.parent().serial_thread.send_data("9" + "\n")
 
 
 class TerminalWindow(QWidget):
@@ -1652,6 +1864,5 @@ if  __name__ == "__main__":
     app = QApplication(sys.argv)
     window = SerialMonitor()
     window.setStyleSheet("background-color: #add8e6;")
-    # window.setFont(font)
     window.show()
     sys.exit(app.exec())
