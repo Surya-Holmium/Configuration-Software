@@ -7,14 +7,14 @@ import threading
 import sys
 from PyQt6.QtGui import QAction, QIcon, QPainter, QMovie, QPixmap, QColor
 from serial.tools.list_ports import comports
-from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QSettings, QRect, Qt, QSize
+from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QSettings, \
+     QRect, Qt, QSize
 import serial
 import subprocess
 import time
 import re
 from openpyxl import Workbook, load_workbook
 import datetime
-from functools import partial
 import os
 
 from enum import Enum
@@ -51,45 +51,51 @@ class HandPointerMessageBox(QMessageBox):
 
 class SerialThread(QThread):
     received = pyqtSignal(str)
-    try:
-        def __init__(self, port, baudrate):
-            super().__init__()
-            self.port = port
-            self.baudrate = baudrate
-            self.running = False
 
-        def run(self):
-            self.running = True
-            try:
-                self.ser = serial.Serial(port=self.port, baudrate=self.baudrate)
-                self.ser.dtr = False
-                self.ser.rts = False
+    def __init__(self, port, baudrate):
+        super().__init__()
+        self.port = port
+        self.baudrate = baudrate
+        self.running = False
+        # self.error_handler = ErrorHandler()
 
-                while self.running:
-                    if self.running:
-                        value = self.ser.readline()
-                        try:
-                            valueString = str(value.decode('UTF-8', errors='ignore'))
-                            self.received.emit(valueString)  # Emit signal with received data
-                        except UnicodeDecodeError as e:
-                            print("Unicode error: ", e)
-            except serial.SerialException as e:
-                print(f"Error connecting to {self.port}: {e}")
+    def run(self):
+        self.running = True
+        self.mySerial = False
+        try:
+            self.ser = serial.Serial(port=self.port, baudrate=self.baudrate)
+            self.mySerial = True
+            self.ser.dtr = False
+            self.ser.rts = False
+            # print("hi")
 
-        def stop(self):
-            self.running = False
-            # self.wait()
+            while self.running:
+                if self.running:
+                    value = self.ser.readline()
+                    try:
+                        valueString = str(value.decode('UTF-8', errors='ignore'))
+                        self.received.emit(valueString)  # Emit signal with received data
+                    except UnicodeDecodeError as e:
+                        print("Unicode error: ", e)
+        except serial.SerialException as e:
+            print(f"Error connecting to {self.port}:{e}")
+            self.received.emit(f"Error Connecting to {self.port}:{e}")
+            
+            
+
+    def stop(self):
+        self.running = False
+        # self.wait()
+        if self.mySerial:
             self.ser.close()
 
-        def send_data(self, data):
-            try:
-                if self.running:
+    def send_data(self, data):
+        try:
+            if self.running:
+                if self.mySerial:
                     self.ser.write(data.encode(encoding="utf-8"))
-            except Exception as e:
-                print(f"Error sending data: {e}")
-
-    except AttributeError as e:
-        print(e)
+        except Exception as e:
+            print(f"Error sending data: {e}")
 
 
 class UploadThread(QThread):
@@ -156,10 +162,7 @@ class  SerialMonitor(QMainWindow):
 
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.scan_USBPort)
-            self.timer.start(5000)
-
-            self.scan_USBPort()
-
+            self.timer.start(1000)
 
             self.baudrate = QComboBox()
             self.baudrate.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -167,8 +170,9 @@ class  SerialMonitor(QMainWindow):
             # self.baudrate.setPlaceholderText("Select Baudrate...")
             layout.addWidget(self.baudrate)
             baudrates = ["115200", "9600"]
-            for baudrate in baudrates:
-                self.baudrate.addItem(baudrate)
+            # for baudrate in baudrates:
+            #     self.baudrate.addItem(baudrate)
+            self.baudrate.addItems(baudrates)
 
             self.addBaudrateToMenuBar()
 
@@ -196,7 +200,7 @@ class  SerialMonitor(QMainWindow):
             self.help_menu_item.addAction(about_action)
 
             #If help menu not showing
-            about_action.setMenuRole(QAction.MenuRole.NoRole)
+            # about_action.setMenuRole(QAction.MenuRole.NoRole)
             about_action.triggered.connect(self.about)
             about_action.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             about_action.hovered.connect(lambda: QApplication.restoreOverrideCursor())
@@ -264,20 +268,17 @@ class  SerialMonitor(QMainWindow):
             self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 16px;")
             self.setStatusBar(self.statusbar)
             
-            window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
-            self.setWindowIcon(window_icon)
+            self.window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
+            self.setWindowIcon(self.window_icon)
 
-            self.programWindow = ProgramWindow(self.image_load, self.statusbar)
-            # self.programWindow.setStyleSheet("background-color: #D3F4FB;")
-            # self.setCentralWidget(self.programWindow)
+            self.programWindow = ProgramWindow(self.window_icon, self.image_load, self.statusbar)
 
-            # self.testWindow = TestWindow()
         except AttributeError as e:
             # Handle the AttributeError appropriately
             print(f"AttributeError occurred: {e}")
 
     def about(self):
-        dialog = AboutDialog()
+        dialog = AboutDialog(self.image_load)
         dialog.exec()
 
     def addComboBoxToMenuBar(self):
@@ -342,28 +343,30 @@ class  SerialMonitor(QMainWindow):
         if not self.selected_port:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Please select a port.")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
             return
         
-        if not self.selected_baudrate:
-            msg_box = HandPointerMessageBox()
-            msg_box.setWindowTitle("Warning")
-            msg_box.setText("Please select a baudrate.")
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.exec()
-            return
+        # if not self.selected_baudrate:
+        #     msg_box = HandPointerMessageBox()
+        #     msg_box.setWindowTitle("Warning")
+        #     msg_box.setText("Please select a baudrate.")
+        #     msg_box.setIcon(QMessageBox.Icon.Warning)
+        #     msg_box.exec()
+        #     return
         
         # Create and start the serial thread
         self.serial_thread = SerialThread(self.selected_port, self.selected_baudrate)
-        self.serial_thread.received.connect(self.on_data_received)  # Connect signal to data received slot
+        self.serial_thread.received.connect(self.on_data_received)  # Connect signal to data received slot   
         try:
             self.serial_thread.start()
             self.connection_open = True
         except AttributeError as e:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Error", f"Error connecting to the device: {str(e)}")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -395,6 +398,7 @@ class  SerialMonitor(QMainWindow):
                 self.calibrate_ai.setEnabled(True)
                 self.exit.setEnabled(True)
                 self.statusbar.clearMessage()
+                self.statusbar.showMessage('Connected')
 
                 if self.calibrateAIWindow is not None:
                     self.calibrateAIWindow.close()
@@ -404,6 +408,13 @@ class  SerialMonitor(QMainWindow):
                     self.testWindow = None  # Reset the reference to None after closing
                 else:
                     pass
+            elif f"Error Connecting to {self.selected_port}" in self.data:
+                msg_box = HandPointerMessageBox()
+                msg_box.setWindowTitle("Warning")
+                msg_box.setWindowIcon(self.window_icon)
+                msg_box.setText(self.data)
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.exec()
 
         elif  currentState == STATE.CONFIGUREMODE.value:
             if "Enter New Serial No" in self.data:
@@ -413,7 +424,7 @@ class  SerialMonitor(QMainWindow):
                 self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 18px;")
 
         elif currentState == STATE.CONFIGBUTTON.value:
-            if "device data saved successfully" in self.data:
+            if "device data saved successfully; now resetting" in self.data:
                 self.statusbar.showMessage("Device Configuration Successful")
 
         elif currentState == STATE.TESTMODE.value:
@@ -522,12 +533,12 @@ class  SerialMonitor(QMainWindow):
             elif ">>> Modbus RTU 1 Test OK <<<" in self.data:
                 self.statusbar.clearMessage()
                 self.testWindow.testmodbusrtu.setStyleSheet("background-color: #26D07C; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
-                self.testWindow.movie_label.setVisible(False)
+                # self.testWindow.movie_label.setVisible(False)
                 # currentState = STATE.TESTMODE.value
             elif ">>> Modbus RTU 1 Test Failed! <<<" in self.data:
                 self.testWindow.testmodbusrtu.setStyleSheet("background-color : #FF7276; border: None; border-radius: 15px; padding: 8px 16px; font-size: 14px;")
                 # self.statusbar.setStyleSheet("background-color: #D4F1F4; font-weight: bold; font-size: 18px;")
-                self.testWindow.movie_label.setVisible(False)
+                # self.testWindow.movie_label.setVisible(False)
                 # currentState = STATE.TESTMODE.value
 
             elif ">>> Testing Modbus RTU 2 <<<" in self.data:
@@ -709,12 +720,13 @@ class  SerialMonitor(QMainWindow):
     def show_warning_message(self, title, message):
         msg_box = HandPointerMessageBox()
         msg_box.setWindowTitle(title)
+        msg_box.setWindowIcon(self.window_icon)
         msg_box.setText(message)
         msg_box.setIcon(QMessageBox.Icon.Warning)
         msg_box.exec()
 
     def programFW(self):
-        self.programWindow = ProgramWindow(self.image_load, self.statusbar)
+        self.programWindow = ProgramWindow(self.window_icon, self.image_load, self.statusbar)
         self.setCentralWidget(self.programWindow)
         if self.terminalWindow is not None:
             self.terminalWindow.deleteLater()
@@ -728,7 +740,7 @@ class  SerialMonitor(QMainWindow):
             self.serial_thread.send_data('2' + "/n")
 
             # Create a new instance of ConfigWindow
-            self.configWindow = ConfigWindow()
+            self.configWindow = ConfigWindow(self.window_icon, self.serial_thread)
             
             # Show the ConfigWindow
             self.setCentralWidget(self.configWindow)
@@ -739,7 +751,7 @@ class  SerialMonitor(QMainWindow):
             # If ConfigWindow already exists, simply set it as the central widget
             self.serial_thread.send_data('2' + "/n")
             self.statusbar.showMessage("Entered into the Configuration Mode")
-            self.configWindow = ConfigWindow()
+            self.configWindow = ConfigWindow(self.window_icon, self.serial_thread)
             self.setCentralWidget(self.configWindow)
 
         if self.terminalWindow is not None:
@@ -781,13 +793,13 @@ class  SerialMonitor(QMainWindow):
         currentState = STATE.CALIBRATEAI.value
         if  self.calibrateAIWindow is None:
             self.serial_thread.send_data('3' + "\n")
-            self.calibrateAIWindow = CalibrateAIWindow()
+            self.calibrateAIWindow = CalibrateAIWindow(self.statusbar, self.window_icon, self.serial_thread)
             self.setCentralWidget(self.calibrateAIWindow)
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
         else:
             # self.serial_thread.send_data('3' + "\n")
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
-            self.calibrateAIWindow = CalibrateAIWindow()
+            self.calibrateAIWindow = CalibrateAIWindow(self.statusbar, self.window_icon, self.serial_thread)
             self.setCentralWidget(self.calibrateAIWindow)
 
         if self.terminalWindow is not None:
@@ -819,21 +831,34 @@ class  SerialMonitor(QMainWindow):
 
 
 class AboutDialog(QMessageBox):
-    def  __init__(self):
+    def  __init__(self, image_load):
         super().__init__()
+        self.image_load = image_load
+
         self.setWindowTitle("About")
         content = """
-Hello There! This GUI is developed to load the firmware in respective  modules of the DataLogger board using a USB-Serial converter. The code is open source.\
-If this code need further changes please do that and push the update version of this code on Github.
+HTCU: HRMS Testing & Config Utility Software
+Used for Uploading Firmware, Testing & Config the device
+Version: HTCU-V1.0.0
+Developed By: Holmium technologies Pvt Ltd
+Released Date: 03/04/2024
+
+Copyright © 2023 Holmium Technologies. All Rights Reserved
 """
         self.setText(content)
+        self.setIcon(QMessageBox.Icon.Information)
+        window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
+        self.setWindowIcon(window_icon)
 
 
 class ProgramWindow(QWidget):
-    def __init__(self, image_load, statusbar):
+    def __init__(self, window_icon, image_load, statusbar):
         super().__init__()
         self.image_load = image_load
         self.statusbar = statusbar 
+        self.window_icon = window_icon
+        self.successs_message ="Success"
+        self.error_message = "Error"
 
         # self.checkboxes = []
         self.selected_file_paths = []
@@ -949,6 +974,7 @@ class ProgramWindow(QWidget):
         if not port:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Please select a port.")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -958,6 +984,7 @@ class ProgramWindow(QWidget):
         if not filename:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Please select a file.")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -974,9 +1001,10 @@ class ProgramWindow(QWidget):
 
     def update_text_area(self, line):
         error_list = ["A fatal error occurred: Failed to connect to Espressif device: No serial data received.",
-                      "A serial exception error occurred: Cannot configure port, something went wrong. Original message: PermissionError(13, 'Access is denied.', None, 5)",
+                      "A serial exception error occurred: Cannot configure port, something went wrong. Original message: PermissionError(13, 'Access is denied.', None, 5)", \
                       "A fatal error occurred: The chip stopped responding.", "A serial exception error occurred: Write timeout", \
-                      "A fatal error occurred: Failed to connect to Espressif device: Download mode successfully detected, but getting no sync reply: The serial TX path seems to be down."]
+                      "A fatal error occurred: Failed to connect to Espressif device: Download mode successfully detected, but getting no sync reply: The serial TX path seems to be down.", \
+                      "A fatal error occurred: Failed to connect to Espressif device: Serial data stream stopped: Possible serial noise or corruption."]
 
         # Append the output line to the QTextEdit box
         self.text_area.append(line)
@@ -1018,14 +1046,12 @@ class ProgramWindow(QWidget):
             self.fade_animation.stop()
 
             self.success_image = self.image_load.load_image("icon\icons8-success-94.png").scaled(30, 30)
-            self.successs_message ="Success"
             self.icon = self.show_temporary_image(self.success_image, self.successs_message, duration=3000)
 
         for error in error_list:
             if error in line:
     
                 self.error_image = self.image_load.load_image("icon\icons8-error-94.png").scaled(30, 30)
-                self.error_message = "Error"
                 self.icon = self.show_temporary_image(self.error_image, self.error_message, duration=3000)
 
     def show_temporary_image(self, image, message, duration):
@@ -1120,8 +1146,10 @@ class DeleteableCheckBox(QCheckBox):
             
             
 class ConfigWindow(QWidget):
-    def  __init__(self):
+    def  __init__(self, window_icon, serial_thread):
         super().__init__()
+        self.serial_thread = serial_thread
+        self.window_icon = window_icon
         
         layout = QGridLayout()
 
@@ -1159,10 +1187,11 @@ class ConfigWindow(QWidget):
         layout.addWidget(self.password, 2, 1)
 
         configured = QLabel("Configured and Tested By: ")
-        self.configured_by = QLineEdit()
-        self.configured_by.setPlaceholderText("Enter Your Name")
+        self.configured_by = QComboBox()
+        self.configured_by.setPlaceholderText("Select Your Name")
         self.configured_by.setStyleSheet("background-color: white;")
-        self.configured_by.setPlaceholderText("Enter Your Name")
+        Users = ["Satish", "Arun", "Rizwan", "khushbu", "Surya", "Jacob", "Sidharth", "Kishan", "Sandeep"]
+        self.configured_by.addItems(Users)
         layout.addWidget(configured, 3, 0)
         layout.addWidget(self.configured_by, 3, 1)
 
@@ -1224,9 +1253,11 @@ class ConfigWindow(QWidget):
     def on_configure_clicked(self):
         # print("configure clicked")
         global currentState
+        currentState = STATE.CONFIGBUTTON.value
         if not self.device_combo.currentText():
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Incorrect Model No. Please Select the Model No."   )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -1236,6 +1267,7 @@ class ConfigWindow(QWidget):
         if not serial_pattern.match(self.serial_no.text()):
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Serial No. format should be HO/HRMS- followed by Character or Digits.")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -1245,20 +1277,22 @@ class ConfigWindow(QWidget):
         if self.password.password_edit.text() != "HO-1810":
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Incorrect password. Please enter the correct password." )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
             return
         
-        if not self.configured_by.text():
+        if not self.configured_by.currentText():
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
-            msg_box.setText("Please enter Your Name.")
+            msg_box.setWindowIcon(self.window_icon)
+            msg_box.setText("Please Select Your Name.")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
             return
         
-        """Save data from GUI elements into CSV file"""
+        """Save data from GUI elements into Excel file"""
         filename = "ConfigurationData.xlsx"
         timestamp = datetime.datetime.now()
         # Format timestamp as string
@@ -1266,7 +1300,7 @@ class ConfigWindow(QWidget):
         serial_number = self.serial_no.text()
         device_type = self.device_combo.currentText()
         testing = "OK"
-        configured = self.configured_by.text()
+        configured = self.configured_by.currentText()
 
         data = [["Date Time", "Serial Number", "Model Number", "Testing", "Configured and Tested By"],
                 [formatted_timestamp, serial_number, device_type, testing, configured]
@@ -1276,30 +1310,34 @@ class ConfigWindow(QWidget):
         
         # Perform time-consuming operations in a separate thread
         threading.Thread(target=self.send_configuration_data).start()
-        currentState = STATE.CONNECTED.value
+        # time.sleep(10)
 
     def send_configuration_data(self):
         # if "Enter New Serial No" in self.parent().data:
         serial_number = self.serial_no.text() + "\n"
-        self.parent().serial_thread.send_data(serial_number)
+        self.serial_thread.send_data(serial_number)
         time.sleep(2)
             # pass
 
         # elif "Enter Password to Save New Serial No" in self.parent().data:
         password = self.password.password_edit.text() + "\n"
-        self.parent().serial_thread.send_data(password)
+        self.serial_thread.send_data(password)
         time.sleep(4)
             # pass
 
         # elif "Select model number:" in self.parent().data:
-        model_number = self.device_combo.currentIndex() + 1 
-        self.parent().serial_thread.send_data(str(model_number) + "\n")
+        model_number = str(self.device_combo.currentIndex() + 1) + "\n"
+        self.serial_thread.send_data(model_number)
 
         threading.Thread(target = self.send_data_after_Configuration).start()
 
     def send_data_after_Configuration(self):
+        # if "E" in self.parent().data[:1]:
         time.sleep(5)
-        self.parent().serial_thread.send_data("Hol" + "\n")
+        self.serial_thread.send_data("Hol" + "\n")
+            
+        global currentState
+        currentState = STATE.CONNECTED.value
 
     def  write_into_excel(self, filename, data):
         try:
@@ -1323,7 +1361,7 @@ class ConfigWindow(QWidget):
         # Save the workbook
         workbook.save(filename)
 
-        self.parent().statusbar.showMessage("Data saved successfully!")
+        # self.parent().statusbar.showMessage("Data saved successfully!")
 
 
 class PasswordLineEdit(QWidget):
@@ -1333,6 +1371,7 @@ class PasswordLineEdit(QWidget):
         self.password_image = ImageLoader()
         
         self.password_edit = QLineEdit()
+        self.password_edit.setText("HO-1810")
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.textChanged.connect(self.toggle_eye_visibility)
 
@@ -1710,8 +1749,12 @@ class TestWindow(QWidget):
 
 class CalibrateAIWindow(QWidget):
     """A widget to calibrate the AI module"""
-    def  __init__(self, parent=None):
+    def  __init__(self, statusbar, window_icon, serial_thread, parent=None):
         super().__init__(parent)
+        self.serial_thread = serial_thread
+        self.window_icon = window_icon
+        self.statusbar = statusbar
+
         self.setWindowTitle('Calibrate AI')
 
         cali_layout = QGridLayout()
@@ -1796,6 +1839,7 @@ class CalibrateAIWindow(QWidget):
         if not self.channel_no:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Incorrect Channel. Please Select the Channel."   )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -1804,6 +1848,7 @@ class CalibrateAIWindow(QWidget):
         if not self.scale_val:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Incorrect Scale value. Please Enter the Scale Value ."   )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -1812,6 +1857,7 @@ class CalibrateAIWindow(QWidget):
         if not self.offset_val:
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
             msg_box.setText("Incorrect Offset Value. Please Enter the Offset Value."   )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
@@ -1820,21 +1866,21 @@ class CalibrateAIWindow(QWidget):
         threading.Thread(target=self._on_calibrate_pressed).start()
     
     def _on_calibrate_pressed(self):
-        self.parent().serial_thread.send_data(self.channel_no + "\n")
+        self.serial_thread.send_data(self.channel_no + "\n")
         time.sleep(2)
 
-        self.parent().serial_thread.send_data(str(int(float(self.scale_val)*100)) + "\n")
+        self.serial_thread.send_data(str(int(float(self.scale_val)*100)) + "\n")
         time.sleep(4)
 
-        self.parent().serial_thread.send_data(str(int(float(self.offset_val)*100)) + "\n")
+        self.serial_thread.send_data(str(int(float(self.offset_val)*100)) + "\n")
 
         time.sleep(3)
-        self.parent().statusbar.showMessage("Calibration AI Done!")
+        self.statusbar.showMessage("Calibration AI Done!")
 
     def exit_from_Calibration(self):
         global currentState
         currentState = STATE.CONNECTED.value
-        self.parent().serial_thread.send_data("9" + "\n")
+        self.serial_thread.send_data("9" + "\n")
 
 
 class TerminalWindow(QWidget):
