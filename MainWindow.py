@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, \
 
 import threading
 import sys
-from PyQt6.QtGui import QAction, QIcon, QPainter, QMovie, QPixmap, QColor
+from PyQt6.QtGui import QAction, QIcon, QPainter, QMovie, QPixmap
 from serial.tools.list_ports import comports
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QSettings, \
      QRect, Qt, QSize
@@ -143,6 +143,7 @@ class  SerialMonitor(QMainWindow):
             self.configWindow = None
             self.testWindow = None
             self.calibrateAIWindow = None
+            self.connection_open = False    
 
             connection_action = QWidget(self)
             self.setCentralWidget(connection_action)
@@ -180,17 +181,17 @@ class  SerialMonitor(QMainWindow):
             self.connect_button_menu.setCursor(Qt.CursorShape.PointingHandCursor)
             self.connect_button_menu.setStyleSheet("background-color: white; color: black;")
 
-            connect_button = QAction("Connect", self)
-            self.connect_button_menu.addAction(connect_button)
-            connect_button.triggered.connect(self.on_connect_clicked)
-            connect_button.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
-            connect_button.hovered.connect(lambda: QApplication.restoreOverrideCursor())
+            self.connect_button = QAction("Connect", self)
+            self.connect_button_menu.addAction(self.connect_button)
+            self.connect_button.triggered.connect(self.on_connect_clicked)
+            self.connect_button.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
+            self.connect_button.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-            disconnect_button = QAction( "Disconnect", self)
-            self.connect_button_menu.addAction(disconnect_button)
-            disconnect_button.triggered.connect(self.on_disconnect_clicked)
-            disconnect_button.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
-            disconnect_button.hovered.connect(lambda: QApplication.restoreOverrideCursor())
+            self.disconnect_button = QAction( "Disconnect", self)
+            self.connect_button_menu.addAction(self.disconnect_button)
+            self.disconnect_button.triggered.connect(self.on_disconnect_clicked)
+            self.disconnect_button.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
+            self.disconnect_button.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
             self.help_menu_item = self.menuBar().addMenu('&Help')
             self.help_menu_item.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -294,7 +295,6 @@ class  SerialMonitor(QMainWindow):
         combo_box_widget.setDefaultWidget(self.comboBox)
         menu.addAction(combo_box_widget)
 
-        self.connection_open = False
 
     def addBaudrateToMenuBar(self):
         menu = self.menuBar().addMenu("Set Baudrate")
