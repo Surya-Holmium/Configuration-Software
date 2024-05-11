@@ -20,6 +20,7 @@ import os
 from enum import Enum
 
 class STATE(Enum):
+    GETMODE = 0
     CONNECTED = 1
     DISCONNECTED = 2
     TESTMODE = 3
@@ -144,9 +145,10 @@ class  SerialMonitor(QMainWindow):
             self.testWindow = None
             self.calibrateAIWindow = None
             self.connection_open = False    
+            self.informationwindow = None
 
-            connection_action = QWidget(self)
-            self.setCentralWidget(connection_action)
+            # self.connection_action = QWidget()
+            # self.setCentralWidget(self.connection_action)
 
             self.comboBox = QComboBox()
             self.comboBox.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -154,8 +156,8 @@ class  SerialMonitor(QMainWindow):
 
             self.comboBox.setPlaceholderText("Select COM Port...")
             
-            layout = QHBoxLayout(connection_action)
-            layout.addWidget(self.comboBox)
+            # self.layoutwidget = QHBoxLayout(self.connection_action)
+            # self.layoutwidget.addWidget(self.comboBox)
 
             self.addComboBoxToMenuBar()
 
@@ -169,7 +171,7 @@ class  SerialMonitor(QMainWindow):
             self.baudrate.setCursor(Qt.CursorShape.PointingHandCursor)
             self.baudrate.setStyleSheet("background-color: white;")
             # self.baudrate.setPlaceholderText("Select Baudrate...")
-            layout.addWidget(self.baudrate)
+            # self.layoutwidget.addWidget(self.baudrate)
             baudrates = ["115200", "9600"]
             # for baudrate in baudrates:
             #     self.baudrate.addItem(baudrate)
@@ -268,6 +270,19 @@ class  SerialMonitor(QMainWindow):
             self.statusbar = QStatusBar()
             self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 16px;")
             self.setStatusBar(self.statusbar)
+
+            # self.main_layout = QGridLayout()
+
+            # self.serialno = QLabel("Seial No: ")
+            # self.modelno = QLabel("Model No: ")
+            # self.frimwareversion = QLabel("Firmware Version: ")
+
+            # self.main_layout.addWidget(self.serialno, 0, 0)
+            # self.main_layout.addWidget(self.modelno, 1, 0)
+            # self.main_layout.addWidget(self.frimwareversion, 2, 0)
+
+            # # self.setLayout(self.main_layout)
+            # self.setCentralWidget(self.main_layout)
             
             self.window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
             self.setWindowIcon(self.window_icon)
@@ -370,29 +385,53 @@ class  SerialMonitor(QMainWindow):
             msg_box.setText("Error", f"Error connecting to the device: {str(e)}")
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
-        # time.sleep(10)
-        # self.serial_thread.send_data("Hol" +"\n")
+
+        # self.serial_thread.received.connect(self.load_data_toScreen)
 
         threading.Thread(target=self.send_data_toGetMode).start()
-
+        
     def send_data_toGetMode(self):
         time.sleep(2)
-        self.serial_thread.send_data("Hol" + "\n")
+        self.serial_thread.send_data("HRMS-1810" + "\n")
+        # global currentState
+        # currentState = STATE.GETMODE.value
 
     def on_data_received(self, data):
         # Append received data to the QTextEdit box of TerminalWindow
         global currentState
         self.data = data
         print(self.data)
+        data_list = []
         try:
             if self.terminalWindow is not None:
                 if self.connection_open:
                     self.terminalWindow.serial_text.append(self.data)
         except AttributeError as e:
             print(f"Attribute Error in terminal window method call: {str(e)}")
-        if currentState == STATE.CONNECTED.value:
 
-            if "Enter 1: TO ENTER TEST MODE" in self.data:
+        data_list.append(self.data)
+        # if currentState == STATE.GETMODE.value:
+        #     # if "serialNo:HO-K301502" in self.data:
+        #     #     self.connection_action.
+        #     if "Holmium Technologies" in self.data[1:22]:
+        #         self.serial_thread.send_data("HRMS-1810" + "\n")
+        #         currentState = STATE.CONNECTED.value
+        if currentState == STATE.CONNECTED.value:
+            if "Holmium Technologies" in self.data[1:22]:
+                self.informationwindow = InformationWindow()
+                self.setCentralWidget(self.informationwindow)
+
+            elif "serialNo" in self.data.split(":")[0]:
+                self.informationwindow.serialvalue.setText(self.data.split(":")[1])
+                # print(self.data.replace(":", " ").split()[1])
+
+            elif "modelNo" in self.data.split(":")[0]:
+                self.informationwindow.modelvalue.setText(self.data.split(":")[1])
+
+            elif "firmwareVersion" in self.data.split(":")[0]:
+                self.informationwindow.frimwareversionvalue.setText(self.data.split(":")[1])
+
+            elif "Enter 1: TO ENTER TEST MODE" in self.data:
                 self.config.setEnabled(True)
                 self.test.setEnabled(True)
                 self.calibrate_ai.setEnabled(True)
@@ -666,6 +705,14 @@ class  SerialMonitor(QMainWindow):
 
         elif currentState == STATE.EXITNORMALLY.value:
             self.statusbar.showMessage(self.data) 
+
+    # def load_data_toScreen(self):
+    #     """Load the data into the Screen"""
+    #     self.serialno = QAction("Serial No: ")
+    #     self.modelno = QLabel("Model No: ")
+    #     self.Firmwareversion = QLabel("Firmware Version: ")
+
+    #     self.connection_action.addAction(self.serialno)
             
     def on_disconnect_clicked(self):
         """Closes the current connection"""
@@ -690,6 +737,9 @@ class  SerialMonitor(QMainWindow):
             elif self.testWindow is not None:
                 self.testWindow.close()  # Close the testWindow if it's open
                 self.testWindow = None  # Reset the reference to None after closing
+            elif self.informationwindow is not None:
+                self.informationwindow.close()
+                self.informationwindow = None
             else:
                 pass
 
@@ -712,6 +762,9 @@ class  SerialMonitor(QMainWindow):
             elif self.testWindow is not None:
                 self.testWindow.close()  # Close the testWindow if it's open
                 self.testWindow = None  # Reset the reference to None after closing
+            elif self.informationwindow is not None:
+                self.informationwindow.close()
+                self.informationwindow = None
             else:
                 pass
         else:
@@ -817,17 +870,47 @@ class  SerialMonitor(QMainWindow):
 
         self.statusbar.showMessage(self.data)
 
-        if self.configWindow is not None:
-            self.configWindow.close()
-            self.configWindow = None
-        elif self.calibrateAIWindow is not None:
+        if self.calibrateAIWindow is not None:
             self.calibrateAIWindow.close()
             self.calibrateAIWindow = None
         elif self.testWindow is not None:
             self.testWindow.close()  # Close the testWindow if it's open
             self.testWindow = None  # Reset the reference to None after closing
+        elif self.configWindow is not None:
+            self.configWindow.close()
+            self.configWindow = None
+        elif self.informationwindow is not None:
+            self.informationwindow.close()
+            self.informationwindow = None
         else:
             pass
+
+
+class InformationWindow(QWidget):
+    """Information Window class for displaying information about the DataLogger"""
+    def __init__(self):
+        super().__init__()
+        # Set up the window layout
+        self.setContentsMargins(0, 0, 200, 200)
+        self.information_layout = QGridLayout()
+
+        self.serialno = QLabel("Serial No: ")
+        self.modelno = QLabel("Model No: ")
+        self.frimwareversion = QLabel("Frimware Version:")
+
+        self.information_layout.addWidget(self.serialno, 0, 0)
+        self.information_layout.addWidget(self.modelno, 1, 0)
+        self.information_layout.addWidget(self.frimwareversion, 2, 0)
+
+        self.serialvalue = QLabel()
+        self.modelvalue = QLabel()
+        self.frimwareversionvalue = QLabel()
+
+        self.information_layout.addWidget(self.serialvalue, 0, 1)
+        self.information_layout.addWidget(self.modelvalue, 1, 1)
+        self.information_layout.addWidget(self.frimwareversionvalue, 2, 1)
+
+        self.setLayout(self.information_layout)
 
 
 class AboutDialog(QMessageBox):
@@ -1334,7 +1417,7 @@ class ConfigWindow(QWidget):
     def send_data_after_Configuration(self):
         # if "E" in self.parent().data[:1]:
         time.sleep(5)
-        self.serial_thread.send_data("Hol" + "\n")
+        self.serial_thread.send_data("HRMS-1810" + "\n")
             
         global currentState
         currentState = STATE.CONNECTED.value
@@ -1909,4 +1992,5 @@ if  __name__ == "__main__":
     window = SerialMonitor()
     window.setStyleSheet("background-color: #add8e6;")
     window.show()
+    # window.load_data_toScreen()
     sys.exit(app.exec())
