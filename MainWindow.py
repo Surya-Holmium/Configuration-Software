@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, \
      QLineEdit, QPushButton, QComboBox, QMainWindow, QHBoxLayout,QMessageBox, \
      QWidgetAction, QFileDialog, QTextEdit, QToolBar, QStatusBar, QSizePolicy, \
-     QGraphicsOpacityEffect, QCheckBox
+     QGraphicsOpacityEffect, QCheckBox, QTableWidget, QTableWidgetItem
 
 import threading
 import sys
@@ -422,14 +422,38 @@ class  SerialMonitor(QMainWindow):
                 self.setCentralWidget(self.informationwindow)
 
             elif "serialNo" in self.data.split(":")[0]:
-                self.informationwindow.serialvalue.setText(self.data.split(":")[1])
-                # print(self.data.replace(":", " ").split()[1])
+                row = 0
+                col = 1
+                if row < self.informationwindow.table.rowCount():
+                    items = self.informationwindow.table.item(row, col)
+                    if items is None:
+                        value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
+                        # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        # value.setData(Qt.)
+                        self.informationwindow.table.setItem(row, col, value)
+                        
 
             elif "modelNo" in self.data.split(":")[0]:
-                self.informationwindow.modelvalue.setText(self.data.split(":")[1])
+                row = 1
+                col = 1
+                if row < self.informationwindow.table.rowCount():
+                    items = self.informationwindow.table.item(row, col)
+                    if items is None:
+                        value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
+                        # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        # value.setData(Qt.)
+                        self.informationwindow.table.setItem(row, col, value)
 
             elif "firmwareVersion" in self.data.split(":")[0]:
-                self.informationwindow.frimwareversionvalue.setText(self.data.split(":")[1])
+               row = 2
+               col = 1
+               if row < self.informationwindow.table.rowCount():
+                    items = self.informationwindow.table.item(row, col)
+                    if items is None:
+                        value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
+                        # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        # value.setData(Qt.)
+                        self.informationwindow.table.setItem(row, col, value)
 
             elif "Enter 1: TO ENTER TEST MODE" in self.data:
                 self.config.setEnabled(True)
@@ -439,14 +463,14 @@ class  SerialMonitor(QMainWindow):
                 self.statusbar.clearMessage()
                 self.statusbar.showMessage('Connected')
 
-                if self.calibrateAIWindow is not None:
-                    self.calibrateAIWindow.close()
-                    self.calibrateAIWindow = None
-                elif self.testWindow is not None:
-                    self.testWindow.close()  # Close the testWindow if it's open
-                    self.testWindow = None  # Reset the reference to None after closing
-                else:
-                    pass
+                # if self.calibrateAIWindow is not None:
+                #     self.calibrateAIWindow.close()
+                #     self.calibrateAIWindow = None
+                # elif self.testWindow is not None:
+                #     self.testWindow.close()  # Close the testWindow if it's open
+                #     self.testWindow = None  # Reset the reference to None after closing
+                # else:
+                #     pass
             elif f"Error Connecting to {self.selected_port}" in self.data:
                 msg_box = HandPointerMessageBox()
                 msg_box.setWindowTitle("Warning")
@@ -728,7 +752,10 @@ class  SerialMonitor(QMainWindow):
             self.statusbar.showMessage("Disconnected")
             # self.testWindow.movie_label.setVisible(False)
 
-            if self.configWindow is not None:
+            if self.programWindow is not None:
+                self.programWindow.close()
+                self.programWindow = None
+            elif self.configWindow is not None:
                 self.configWindow.close()
                 self.configWindow = None
             elif self.calibrateAIWindow is not None:
@@ -753,7 +780,10 @@ class  SerialMonitor(QMainWindow):
             self.statusbar.showMessage("Disconnected")
             # self.testWindow.movie_label.setVisible(False)
 
-            if self.configWindow is not None:
+            if self.programWindow is not None:
+                self.programWindow.close()
+                self.programWindow = None
+            elif self.configWindow is not None:
                 self.configWindow.close()
                 self.configWindow = None
             elif self.calibrateAIWindow is not None:
@@ -870,15 +900,18 @@ class  SerialMonitor(QMainWindow):
 
         self.statusbar.showMessage(self.data)
 
-        if self.calibrateAIWindow is not None:
+        if self.programWindow is not None:
+            self.programWindow.close()
+            self.programWindow = None
+        elif self.configWindow is not None:
+            self.configWindow.close()
+            self.configWindow = None
+        elif self.calibrateAIWindow is not None:
             self.calibrateAIWindow.close()
             self.calibrateAIWindow = None
         elif self.testWindow is not None:
             self.testWindow.close()  # Close the testWindow if it's open
             self.testWindow = None  # Reset the reference to None after closing
-        elif self.configWindow is not None:
-            self.configWindow.close()
-            self.configWindow = None
         elif self.informationwindow is not None:
             self.informationwindow.close()
             self.informationwindow = None
@@ -891,24 +924,38 @@ class InformationWindow(QWidget):
     def __init__(self):
         super().__init__()
         # Set up the window layout
-        self.setContentsMargins(0, 0, 200, 200)
+        self.setContentsMargins(0, 0, 172, 172)
         self.information_layout = QGridLayout()
 
-        self.serialno = QLabel("Serial No: ")
-        self.modelno = QLabel("Model No: ")
-        self.frimwareversion = QLabel("Frimware Version:")
+        self.table = QTableWidget()
+        # self.table.setRowCount(3)
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(("Item", "Value"))
+        self.table.horizontalHeader().setStyleSheet("font-weight: bold")
+        # self.table.setVerticalHeaderLabels(("Serial No.", "Model No.", "Firmware Version"))
+        self.table.verticalHeader().setVisible(False)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.viewport().setAutoFillBackground(False)
 
-        self.information_layout.addWidget(self.serialno, 0, 0)
-        self.information_layout.addWidget(self.modelno, 1, 0)
-        self.information_layout.addWidget(self.frimwareversion, 2, 0)
+        # self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # Allow table to expand vertically
+        # self.table.setMinimumHeight(0)  # Remove any minimum height constraints
 
-        self.serialvalue = QLabel()
-        self.modelvalue = QLabel()
-        self.frimwareversionvalue = QLabel()
+        self.table.horizontalHeader().setStretchLastSection(True)
+        # self.table.verticalHeader().setStretchLastSection(True)
+        # self.table.setMinimumHeight(50)
 
-        self.information_layout.addWidget(self.serialvalue, 0, 1)
-        self.information_layout.addWidget(self.modelvalue, 1, 1)
-        self.information_layout.addWidget(self.frimwareversionvalue, 2, 1)
+        self.information_layout.addWidget(self.table, 0, 0)
+
+        self.predefined_values = ["Serial No", "Model No", "Firmware Version"]
+        for i, value in enumerate(self.predefined_values):
+            self.table.insertRow(i)
+            item = QTableWidgetItem(value)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # Make cells read-only
+            self.table.setItem(i, 0, item)
+
+        self.table.resizeRowsToContents()
+        # self.table.resizeColumnsToContents()
 
         self.setLayout(self.information_layout)
 
