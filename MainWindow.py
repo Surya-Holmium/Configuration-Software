@@ -853,7 +853,7 @@ class  SerialMonitor(QMainWindow):
             self.statusbar.showMessage("Entered into the Test Mode")
             # self.testWindow.show_gif_AfterPressingButton.movie_label.setVisible(False)
         else:
-            # self.serial_thread.send_data('1' + "\n")
+            self.serial_thread.send_data('1' + "\n")
             self.statusbar.showMessage("Entered into the Test Mode")
             self.testWindow = TestWindow(self.terminalWindow, self.serial_thread, self.image_load, self.statusbar,parent=self)
             # self.testWindow.show_gif_AfterPressingButton.movie_label.setVisible(False)
@@ -880,7 +880,7 @@ class  SerialMonitor(QMainWindow):
             self.setCentralWidget(self.calibrateAIWindow)
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
         else:
-            # self.serial_thread.send_data('3' + "\n")
+            self.serial_thread.send_data('3' + "\n")
             self.statusbar.showMessage("Entered into the Calibration AI Mode")
             self.calibrateAIWindow = CalibrateAIWindow(self.statusbar, self.window_icon, self.serial_thread)
             self.setCentralWidget(self.calibrateAIWindow)
@@ -1100,6 +1100,7 @@ class ProgramWindow(QWidget):
             self.recreate_checkboxes()
 
     def upload_program(self):
+        self.statusbar.clearMessage()
         port = self.parent().comboBox.currentText()
         if not port:
             msg_box = HandPointerMessageBox()
