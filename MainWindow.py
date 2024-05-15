@@ -751,24 +751,26 @@ class  SerialMonitor(QMainWindow):
             self.exit.setEnabled(False)
             self.statusbar.showMessage("Disconnected")
             # self.testWindow.movie_label.setVisible(False)
-
-            if self.programWindow is not None:
-                self.programWindow.close()
-                self.programWindow = None
-            elif self.configWindow is not None:
-                self.configWindow.close()
-                self.configWindow = None
-            elif self.calibrateAIWindow is not None:
-                self.calibrateAIWindow.close()
-                self.calibrateAIWindow = None
-            elif self.testWindow is not None:
-                self.testWindow.close()  # Close the testWindow if it's open
-                self.testWindow = None  # Reset the reference to None after closing
-            elif self.informationwindow is not None:
-                self.informationwindow.close()
-                self.informationwindow = None
-            else:
-                pass
+            try:
+                if self.programWindow is not None:
+                    self.programWindow.close()
+                    self.programWindow = None
+                elif self.configWindow is not None:
+                    self.configWindow.close()
+                    self.configWindow = None
+                elif self.calibrateAIWindow is not None:
+                    self.calibrateAIWindow.close()
+                    self.calibrateAIWindow = None
+                elif self.testWindow is not None:
+                    self.testWindow.close()  # Close the testWindow if it's open
+                    self.testWindow = None  # Reset the reference to None after closing
+                elif self.informationwindow is not None:
+                    self.informationwindow.close()
+                    self.informationwindow = None
+                else:
+                    pass
+            except RuntimeError as e:
+                print(e)
 
         elif self.serial_thread:
             self.connection_open = False
@@ -780,23 +782,26 @@ class  SerialMonitor(QMainWindow):
             self.statusbar.showMessage("Disconnected")
             # self.testWindow.movie_label.setVisible(False)
 
-            if self.programWindow is not None:
-                self.programWindow.close()
-                self.programWindow = None
-            elif self.configWindow is not None:
-                self.configWindow.close()
-                self.configWindow = None
-            elif self.calibrateAIWindow is not None:
-                self.calibrateAIWindow.close()
-                self.calibrateAIWindow = None
-            elif self.testWindow is not None:
-                self.testWindow.close()  # Close the testWindow if it's open
-                self.testWindow = None  # Reset the reference to None after closing
-            elif self.informationwindow is not None:
-                self.informationwindow.close()
-                self.informationwindow = None
-            else:
-                pass
+            try:
+                if self.programWindow is not None:
+                    self.programWindow.close()
+                    self.programWindow = None
+                elif self.configWindow is not None:
+                    self.configWindow.close()
+                    self.configWindow = None
+                elif self.calibrateAIWindow is not None:
+                    self.calibrateAIWindow.close()
+                    self.calibrateAIWindow = None
+                elif self.testWindow is not None:
+                    self.testWindow.close()  # Close the testWindow if it's open
+                    self.testWindow = None  # Reset the reference to None after closing
+                elif self.informationwindow is not None:
+                    self.informationwindow.close()
+                    self.informationwindow = None
+                else:
+                    pass
+            except RuntimeError as e:
+                print(e)
         else:
             self.show_warning_message("Warning", "No active connection to disconnect.")
 
@@ -900,23 +905,26 @@ class  SerialMonitor(QMainWindow):
 
         self.statusbar.showMessage(self.data)
 
-        if self.programWindow is not None:
-            self.programWindow.close()
-            self.programWindow = None
-        elif self.configWindow is not None:
-            self.configWindow.close()
-            self.configWindow = None
-        elif self.calibrateAIWindow is not None:
-            self.calibrateAIWindow.close()
-            self.calibrateAIWindow = None
-        elif self.testWindow is not None:
-            self.testWindow.close()  # Close the testWindow if it's open
-            self.testWindow = None  # Reset the reference to None after closing
-        elif self.informationwindow is not None:
-            self.informationwindow.close()
-            self.informationwindow = None
-        else:
-            pass
+        try:
+            if self.programWindow is not None:
+                self.programWindow.close()
+                self.programWindow = None
+            elif self.configWindow is not None:
+                self.configWindow.close()
+                self.configWindow = None
+            elif self.calibrateAIWindow is not None:
+                self.calibrateAIWindow.close()
+                self.calibrateAIWindow = None
+            elif self.testWindow is not None:
+                self.testWindow.close()  # Close the testWindow if it's open
+                self.testWindow = None  # Reset the reference to None after closing
+            elif self.informationwindow is not None:
+                self.informationwindow.close()
+                self.informationwindow = None
+            else:
+                pass
+        except RuntimeError as e:
+            print(e)
 
 
 class InformationWindow(QWidget):
