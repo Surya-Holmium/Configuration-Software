@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, \
      QLineEdit, QPushButton, QComboBox, QMainWindow, QHBoxLayout,QMessageBox, \
      QWidgetAction, QFileDialog, QTextEdit, QToolBar, QStatusBar, QSizePolicy, \
-     QGraphicsOpacityEffect, QCheckBox, QTableWidget, QTableWidgetItem
+     QGraphicsOpacityEffect, QCheckBox, QTableWidget, QTableWidgetItem, QDialog
 
 import threading
 import sys
@@ -16,11 +16,11 @@ import re
 from openpyxl import Workbook, load_workbook
 import datetime
 import os
+import sqlite3
 
 from enum import Enum
 
 class STATE(Enum):
-    GETMODE = 0
     CONNECTED = 1
     DISCONNECTED = 2
     TESTMODE = 3
@@ -129,6 +129,107 @@ class ImageLoader:
         except Exception:
             filepath = os.path.abspath(".")
         return QMovie(os.path.join(filepath, filename))
+    
+
+class LoginWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("HRMS Test & Config Utility")
+        self.setMinimumSize(600, 400)
+        self.setContentsMargins(200, 100, 200, 100)
+
+        self.image_load = ImageLoader()
+
+        self.window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
+        self.setWindowIcon(self.window_icon)
+
+        # Create layout and add widgets
+        layout = QGridLayout()
+        
+        # Create widgets
+        self.message = QLabel("Welcome!")
+        self.message.setStyleSheet("color: green; font-weight: bold; font-size: 16px")
+        self.username_label = QLabel("Username:")
+        self.username_input = QLineEdit()
+        self.username_input.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+
+        self.password_label = QLabel("Password:")
+        self.password_input = QLineEdit()
+        self.password_input.setStyleSheet("QLineEdit { background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+
+        self.login_button = QPushButton("Login")
+        self.login_button.setFixedSize(60, 30)
+        self.login_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: white;
+                border: None;
+                border-radius: 15px; 
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            QPushButton:hover {
+                background-color: #FFFFFF; 
+                border-color: grey; 
+            }
+            """
+        )
+        # self.login_button.setGeometry(200, 200, 200, 200)
+        self.login_button.clicked.connect(self.handle_login)
+
+        self.sign_up_button = QPushButton("Register")
+        self.sign_up_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sign_up_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: white;
+                border: None;
+                border-radius: 15px; 
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+
+            QPushButton:hover {
+                background-color: #FFFFFF; 
+                border-color: grey; 
+            }
+            """
+        )
+        self.sign_up_button.setFixedSize(80, 30)
+
+        layout.addWidget(self.message, 0, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.username_label, 1, 0)
+        layout.addWidget(self.username_input, 2, 0)
+        layout.addWidget(self.password_label, 3, 0)
+        layout.addWidget(self.password_input, 4, 0)
+        layout.addWidget(self.login_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.sign_up_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Create a central widget and set the layout
+        central_widget = QWidget()
+        central_widget.setLayout(layout)
+        self.setCentralWidget(central_widget)
+
+    def handle_login(self):
+        username = self.username_input.text()
+        password = self.password_input.text()
+
+        # For demonstration, we'll consider the correct username and password to be 'admin'
+        if username == 'admin' and password == 'admin':
+            # QMessageBox.information(self, "Login Successful", "You have successfully logged in.")
+            self.open_new_window()
+        else:
+            QMessageBox.warning(self, "Login Failed", "The username or password is incorrect.")
+
+    def open_new_window(self):
+        self.new_window = SerialMonitor()
+        self.new_window.show()
+        self.new_window.setStyleSheet("background-color: #add8e6;")
+        self.close()
 
 
 class  SerialMonitor(QMainWindow):
@@ -146,13 +247,14 @@ class  SerialMonitor(QMainWindow):
             self.calibrateAIWindow = None
             self.connection_open = False    
             self.informationwindow = None
+            self.programWindow = None
 
             # self.connection_action = QWidget()
             # self.setCentralWidget(self.connection_action)
 
             self.comboBox = QComboBox()
             self.comboBox.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.comboBox.setStyleSheet("background-color: white;")
+            self.comboBox.setStyleSheet("background-color: white")
 
             self.comboBox.setPlaceholderText("Select COM Port...")
             
@@ -209,11 +311,11 @@ class  SerialMonitor(QMainWindow):
             about_action.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
 
-            program = QAction("Program", self)
+            self.program = QAction("Program", self)
             # program.setStatusTip("program")
-            program.triggered.connect(self.programFW)
-            program.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
-            program.hovered.connect(lambda: QApplication.restoreOverrideCursor())
+            self.program.triggered.connect(self.programFW)
+            self.program.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
+            self.program.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
 
             self.config = QAction("Configure Device", self)
@@ -222,19 +324,19 @@ class  SerialMonitor(QMainWindow):
             self.config.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             self.config.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-            self.test = QAction( "Test Device", self)
+            self.test = QAction("Test Device", self)
             self.test.setEnabled(False)   # Disable the action initially
             self.test.triggered.connect(self.testDevice)
             self.test.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             self.test.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-            self.calibrate_ai = QAction( "Calibrate AI", self)
+            self.calibrate_ai = QAction("Calibrate AI", self)
             self.calibrate_ai.setEnabled(False)   # Disable the action initially
             self.calibrate_ai.triggered.connect(self.calibrate_AI)
             self.calibrate_ai.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
             self.calibrate_ai.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-            self.exit = QAction( "Exit", self)
+            self.exit = QAction("Exit", self)
             self.exit.setEnabled(False)   # Disable the action initially
             self.exit.triggered.connect(self.exit_All)
             self.exit.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
@@ -243,10 +345,11 @@ class  SerialMonitor(QMainWindow):
             self.image_load = ImageLoader()
             icon = QIcon(self.image_load.load_image("icon\magnifying-glass.png"))
 
-            serialbutton = QAction(icon,"SerialButton", self)
-            serialbutton.triggered.connect(self.openTerminalWindow)
-            serialbutton.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
-            serialbutton.hovered.connect(lambda: QApplication.restoreOverrideCursor())
+            self.serialbutton = QAction(icon,"SerialButton", self)
+            # self.serialbutton.setStyleSheet("QAction { border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+            self.serialbutton.triggered.connect(self.openTerminalWindow)
+            self.serialbutton.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
+            self.serialbutton.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
             #Creating toolbar and adding toolbar elements
             toolbar = QToolBar()
@@ -254,13 +357,36 @@ class  SerialMonitor(QMainWindow):
             toolbar.setMovable(True)
             self.addToolBar(toolbar)
 
-            toolbar.addActions([program, self.config, self.test, self.calibrate_ai, self.exit])
+            toolbar.addActions([self.program, self.config, self.test, self.calibrate_ai, self.exit])
             
             # Add a spacer item to push the serialbutton to the corner
             spacer = QWidget()
             spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+
             toolbar.addWidget(spacer)
-            toolbar.addAction(serialbutton)
+            toolbar.addAction(self.serialbutton)
+
+            self.programbutton = QPushButton("Program")
+            self.programbutton.clicked.connect(self.program.trigger)
+
+            self.configbutton = QPushButton("Configure Device")
+            self.configbutton.clicked.connect(self.config.trigger)
+
+            self.testbutton = QPushButton("Test Device")
+            self.testbutton.clicked.connect(self.test.trigger)
+
+            self.calibratebutton = QPushButton("Calibrate AI")
+            self.calibratebutton.clicked.connect(self.calibrate_ai.trigger)
+
+            self.exitbutton = QPushButton("Exit")
+            self.exitbutton.clicked.connect(self.exit.trigger)
+
+            self.serialmonitorbutton = QPushButton("SerialButton")
+            self.serialmonitorbutton.clicked.connect(self.serialbutton.trigger)
+
+            # Apply styles
+            self.apply_styles()
 
             self.selected_port = None
             self.serial_thread = None
@@ -287,11 +413,47 @@ class  SerialMonitor(QMainWindow):
             self.window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
             self.setWindowIcon(self.window_icon)
 
-            self.programWindow = ProgramWindow(self.window_icon, self.image_load, self.statusbar)
+            # self.programWindow = ProgramWindow(self.window_icon, self.image_load, self.statusbar)
+
+            # self.loginwindow = LoginWindow(self.window_icon)
 
         except AttributeError as e:
             # Handle the AttributeError appropriately
             print(f"AttributeError occurred: {e}")
+
+    def apply_styles(self):
+        # Style the buttons
+        button_style = """
+            QPushButton {
+                background-color: #add8e6; 
+                border: 2px; 
+                border-radius: 15px; 
+                padding: 0 8px; 
+            }
+            QPushButton:hover {
+                background-color: #D4F1F4; /* Darker green on hover */
+            }
+        """
+        self.programbutton.setStyleSheet(button_style)
+        self.configbutton.setStyleSheet(button_style)
+        self.testbutton.setStyleSheet(button_style)
+        self.calibratebutton.setStyleSheet(button_style)
+        self.exitbutton.setStyleSheet(button_style)
+        self.serialmonitorbutton.setStyleSheet(button_style)
+
+        # Style the toolbar buttons (QToolButton) associated with QActions
+        toolbar_style = """
+            QToolButton {
+                background-color: #add8e6; 
+                border: 2px; 
+                border-radius: 10px; 
+                padding: 0 8px; 
+            }
+            QToolButton:hover {
+                background-color: #D4F1F4; /* Darker green on hover */
+            }
+        """
+        self.findChildren(QToolBar)[0].setStyleSheet(toolbar_style)
 
     def about(self):
         dialog = AboutDialog(self.image_load)
@@ -1011,7 +1173,8 @@ class ProgramWindow(QWidget):
 
         select_file = QLabel("Select File to Upload:")
         self.filename_edit = QLineEdit()
-        self.filename_edit.setStyleSheet("background-color: white;")
+        self.filename_edit.setFixedSize(270, 30)
+        self.filename_edit.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.browse_button = QPushButton("Browse_File")
         self.browse_button.setStyleSheet(
             """
@@ -1020,30 +1183,32 @@ class ProgramWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 14px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
-                background-color: #FFFFFF; 
+                background-color: #A6F1F4; 
                 border-color: grey; 
             }
             """
         )
+        self.browse_button.setFixedSize(95, 30)
+
         self.browse_button.clicked.connect(self.select_file)
 
         self.grid_layout.addWidget(select_file, 0, 0)
         self.grid_layout.addWidget(self.filename_edit, 0, 1)
         self.grid_layout.addWidget(self.browse_button, 0, 2)
 
-        upload = QPushButton("Upload")
-        upload.setStyleSheet(
+        self.upload = QPushButton("Upload")
+        self.upload.setStyleSheet(
             """
             QPushButton {
                 background-color: white;
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 14px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1052,11 +1217,13 @@ class ProgramWindow(QWidget):
             }
             """
         )
-        self.grid_layout.addWidget(upload, 0, 3)
-        upload.clicked.connect(self.upload_program)
+        self.upload.setFixedSize(90, 30)
+
+        self.grid_layout.addWidget(self.upload, 0, 3)
+        self.upload.clicked.connect(self.upload_program)
 
         self.text_area = QTextEdit(readOnly=True)
-        self.text_area.setStyleSheet("background-color: white;")
+        self.text_area.setStyleSheet("QTextEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.grid_layout.addWidget(self.text_area, 1, 0,  1, 4)
 
         self.upload_thread = None
@@ -1289,13 +1456,15 @@ class ConfigWindow(QWidget):
         super().__init__()
         self.serial_thread = serial_thread
         self.window_icon = window_icon
+
+        # self.setContentsMargins(350, 350, 350, 350)
         
         layout = QGridLayout()
 
         device_name = QLabel("HRMS-E32:")
         self.device_combo = QComboBox()
         self.device_combo.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.device_combo.setStyleSheet("background-color: white;")
+        self.device_combo.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.device_combo.setPlaceholderText("Select Device")
         devicename = ["W", "WGL", "WG", "WL", "G", "L", "GL", "PG", "PP", "PE"]
         self.device_combo.addItems(devicename)
@@ -1313,36 +1482,36 @@ class ConfigWindow(QWidget):
 
         serial_number = QLabel("Serial No.")
         self.serial_no = QLineEdit()
-        self.serial_no.setStyleSheet("background-color: white;")
+        self.serial_no.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.serial_no.setPlaceholderText("Enter Serial Number")
         layout.addWidget(serial_number, 1, 0)
         layout.addWidget(self.serial_no, 1, 1)
 
         password = QLabel("Password")
         self.password = PasswordLineEdit()
-        self.password.setStyleSheet("background-color: white;")
+        self.password.setStyleSheet("background-color: white")
         # self.password.setPlaceholderText("Enter Password")
         layout.addWidget(password, 2, 0)
-        layout.addWidget(self.password, 2, 1)
+        layout.addWidget(self.password, 2, 1, 1, 1)
 
         configured = QLabel("Configured and Tested By: ")
         self.configured_by = QComboBox()
         self.configured_by.setPlaceholderText("Select Your Name")
-        self.configured_by.setStyleSheet("background-color: white;")
+        self.configured_by.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         Users = ["Satish", "Arun", "Rizwan", "khushbu", "Surya", "Jacob", "Sidharth", "Kishan", "Sandeep"]
         self.configured_by.addItems(Users)
         layout.addWidget(configured, 3, 0)
         layout.addWidget(self.configured_by, 3, 1)
 
-        configure = QPushButton("Configure")
-        configure.setStyleSheet(
+        self.configure = QPushButton("Configure")
+        self.configure.setStyleSheet(
                     """
             QPushButton {
                 background-color: white;
                 border: None;
-                border-radius: 20px; 
+                border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1351,9 +1520,10 @@ class ConfigWindow(QWidget):
             }
             """
         )
-        configure.setCursor(Qt.CursorShape.PointingHandCursor)
-        configure.clicked.connect(self.on_configure_clicked)
-        layout.addWidget(configure,  4, 3)
+        self.configure.setFixedSize(88,30)
+        self.configure.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.configure.clicked.connect(self.on_configure_clicked)
+        layout.addWidget(self.configure,  4, 3)
 
         # export_to_excel = QPushButton("Export to CSV")
         # export_to_excel.setStyleSheet(
@@ -1510,6 +1680,7 @@ class PasswordLineEdit(QWidget):
         self.password_image = ImageLoader()
         
         self.password_edit = QLineEdit()
+        self.password_edit.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.password_edit.setText("HO-1810")
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.textChanged.connect(self.toggle_eye_visibility)
@@ -2034,7 +2205,7 @@ class TerminalWindow(QWidget):
             layout.addWidget(serial, 0, 0)
 
             self.serial_text = QTextEdit(readOnly = True)
-            self.serial_text.setStyleSheet("background-color: white;")
+            self.serial_text.setStyleSheet("QTextEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
             layout.addWidget(self.serial_text, 1, 0, 1, 2)
 
             self.setLayout(layout)
@@ -2045,7 +2216,7 @@ class TerminalWindow(QWidget):
 
 if  __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = SerialMonitor()
+    window = LoginWindow()
     window.setStyleSheet("background-color: #add8e6;")
     window.show()
     # window.load_data_toScreen()
