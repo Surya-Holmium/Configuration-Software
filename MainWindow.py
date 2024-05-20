@@ -13,10 +13,12 @@ import serial
 import subprocess
 import time
 import re
-from openpyxl import Workbook, load_workbook
+# from openpyxl import Workbook, load_workbook
 import datetime
 import os
-import sqlite3
+
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 from enum import Enum
 
@@ -40,6 +42,16 @@ class STATE(Enum):
 
 
 currentState = STATE.DISCONNECTED.value
+
+
+# If modifying these SCOPES, delete the file token.pickle.
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
+# The ID and range of your spreadsheet.
+AUTHENTICATE_SPREADSHEET_ID = '1nBTVFEzVT6J5mbsFH935il6Byd60TCtUmU6Sx2vZjGc'
+AUTHENTICATE_RANGE_NAME = 'Sheet1!A1:B'
+DATABASE_SPREADSHEET_ID = '1ah5PPkq_2XMqDL99uXZdQ1oDzulAEWxfmiFCQ_ffsdw'
+DATABASE_RANGE_NAME = 'Sheet1!A1:E1'
 
 
 class HandPointerMessageBox(QMessageBox):
@@ -131,6 +143,25 @@ class ImageLoader:
         return QMovie(os.path.join(filepath, filename))
     
 
+class GoogleSheetsAuthThread(QThread):
+    auth_finished = pyqtSignal(object)
+
+    def run(self):
+        try:
+            # Path to your service account key file
+            if getattr(sys, 'frozen', False):  # Check if the app is running as a bundled executable
+                service_account_file = os.path.join(sys._MEIPASS, 'credentialdata', 'htcudatabase-423608-d20a7aa9b6ad.json')
+            else:
+                service_account_file = os.path.join(os.path.dirname(__file__), 'credentialdata', 'htcudatabase-423608-d20a7aa9b6ad.json')
+
+            creds = Credentials.from_service_account_file(service_account_file, scopes=SCOPES)
+            service = build('sheets', 'v4', credentials=creds)
+            self.auth_finished.emit(service)
+        except Exception as e:
+            print(f"Error during Google Sheets authentication: {e}")
+            self.auth_finished.emit(None)
+    
+
 class LoginWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -138,6 +169,8 @@ class LoginWindow(QMainWindow):
         self.setWindowTitle("HRMS Test & Config Utility")
         self.setMinimumSize(600, 400)
         self.setContentsMargins(200, 100, 200, 100)
+
+        self.statusbar = self.statusBar()
 
         self.image_load = ImageLoader()
 
@@ -181,60 +214,89 @@ class LoginWindow(QMainWindow):
         # self.login_button.setGeometry(200, 200, 200, 200)
         self.login_button.clicked.connect(self.handle_login)
 
-        self.sign_up_button = QPushButton("Register")
-        self.sign_up_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.sign_up_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: white;
-                border: None;
-                border-radius: 15px; 
-                padding: 8px 16px;
-                font-size: 12px;
-            }
+        # self.sign_up_button = QPushButton("Register")
+        # self.sign_up_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # self.sign_up_button.setStyleSheet(
+        #     """
+        #     QPushButton {
+        #         background-color: white;
+        #         border: None;
+        #         border-radius: 15px; 
+        #         padding: 8px 16px;
+        #         font-size: 12px;
+        #     }
 
-            QPushButton:hover {
-                background-color: #FFFFFF; 
-                border-color: grey; 
-            }
-            """
-        )
-        self.sign_up_button.setFixedSize(80, 30)
+        #     QPushButton:hover {
+        #         background-color: #FFFFFF; 
+        #         border-color: grey; 
+        #     }
+        #     """
+        # )
+        # self.sign_up_button.setFixedSize(80, 30)
 
         layout.addWidget(self.message, 0, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.username_label, 1, 0)
         layout.addWidget(self.username_input, 2, 0)
         layout.addWidget(self.password_label, 3, 0)
         layout.addWidget(self.password_input, 4, 0)
-        layout.addWidget(self.login_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(self.sign_up_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self.login_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignCenter)
+        # layout.addWidget(self.sign_up_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignRight)
 
         # Create a central widget and set the layout
         central_widget = QWidget()
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
+        self.service = None
+        self.auth_thread = GoogleSheetsAuthThread()
+        self.auth_thread.auth_finished.connect(self.on_auth_finished)
+        self.auth_thread.start()
+
+    def on_auth_finished(self, service):
+        self.service = service
+        # self.progress_dialog.hide()
+        # self.login_button.setEnabled(True)
+
     def handle_login(self):
+        if not self.service:
+            QMessageBox.warning(self, "Error", "Authentication is still in progress. Please wait.")
+            return
+        
         username = self.username_input.text()
         password = self.password_input.text()
 
-        # For demonstration, we'll consider the correct username and password to be 'admin'
-        if username == 'admin' and password == 'admin':
+        # Check if the user exists in the Google Sheet
+        user_exists = self.check_user_in_sheet(username, password)
+        if user_exists:
             # QMessageBox.information(self, "Login Successful", "You have successfully logged in.")
             self.open_new_window()
         else:
-            QMessageBox.warning(self, "Login Failed", "The username or password is incorrect.")
+            QMessageBox.warning(self, "Login Failed", "The username or password is incorrect or if you are new user then please register")
+
+    def check_user_in_sheet(self, username, password):
+        try:
+            sheet = self.service.spreadsheets()
+            result = sheet.values().get(spreadsheetId=AUTHENTICATE_SPREADSHEET_ID, range=AUTHENTICATE_RANGE_NAME).execute()
+            values = result.get('values', [])
+            for row in values:
+                if len(row) >= 2 and row[0] == username and row[1] == password:
+                    return True
+            return False
+        except Exception as e:
+            print(f"Error accessing Google Sheets: {e}")
+            return False
 
     def open_new_window(self):
-        self.new_window = SerialMonitor()
+        self.new_window = SerialMonitor(self.service)
         self.new_window.show()
         self.new_window.setStyleSheet("background-color: #add8e6;")
         self.close()
 
 
 class  SerialMonitor(QMainWindow):
-    def __init__(self):
+    def __init__(self, service):
         super().__init__()
+        self.service = service
         try:
             self.setWindowTitle("HRMS Test & Config Utility")
             self.setMinimumSize(600, 400)
@@ -396,19 +458,6 @@ class  SerialMonitor(QMainWindow):
             self.statusbar = QStatusBar()
             self.statusbar.setStyleSheet("background-color: #D4F1F4; color: green;  font-weight: bold; font-size: 16px;")
             self.setStatusBar(self.statusbar)
-
-            # self.main_layout = QGridLayout()
-
-            # self.serialno = QLabel("Seial No: ")
-            # self.modelno = QLabel("Model No: ")
-            # self.frimwareversion = QLabel("Firmware Version: ")
-
-            # self.main_layout.addWidget(self.serialno, 0, 0)
-            # self.main_layout.addWidget(self.modelno, 1, 0)
-            # self.main_layout.addWidget(self.frimwareversion, 2, 0)
-
-            # # self.setLayout(self.main_layout)
-            # self.setCentralWidget(self.main_layout)
             
             self.window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
             self.setWindowIcon(self.window_icon)
@@ -427,7 +476,7 @@ class  SerialMonitor(QMainWindow):
             QPushButton {
                 background-color: #add8e6; 
                 border: 2px; 
-                border-radius: 15px; 
+                border-radius: 10px; 
                 padding: 0 8px; 
             }
             QPushButton:hover {
@@ -563,7 +612,6 @@ class  SerialMonitor(QMainWindow):
         global currentState
         self.data = data
         print(self.data)
-        data_list = []
         try:
             if self.terminalWindow is not None:
                 if self.connection_open:
@@ -571,13 +619,6 @@ class  SerialMonitor(QMainWindow):
         except AttributeError as e:
             print(f"Attribute Error in terminal window method call: {str(e)}")
 
-        data_list.append(self.data)
-        # if currentState == STATE.GETMODE.value:
-        #     # if "serialNo:HO-K301502" in self.data:
-        #     #     self.connection_action.
-        #     if "Holmium Technologies" in self.data[1:22]:
-        #         self.serial_thread.send_data("HRMS-1810" + "\n")
-        #         currentState = STATE.CONNECTED.value
         if currentState == STATE.CONNECTED.value:
             if "Holmium Technologies" in self.data[1:22]:
                 self.informationwindow = InformationWindow()
@@ -990,7 +1031,7 @@ class  SerialMonitor(QMainWindow):
             self.serial_thread.send_data('2' + "/n")
 
             # Create a new instance of ConfigWindow
-            self.configWindow = ConfigWindow(self.window_icon, self.serial_thread)
+            self.configWindow = ConfigWindow(self.window_icon, self.serial_thread, self.service)
             
             # Show the ConfigWindow
             self.setCentralWidget(self.configWindow)
@@ -1001,7 +1042,7 @@ class  SerialMonitor(QMainWindow):
             # If ConfigWindow already exists, simply set it as the central widget
             self.serial_thread.send_data('2' + "/n")
             self.statusbar.showMessage("Entered into the Configuration Mode")
-            self.configWindow = ConfigWindow(self.window_icon, self.serial_thread)
+            self.configWindow = ConfigWindow(self.window_icon, self.serial_thread, self.service)
             self.setCentralWidget(self.configWindow)
 
         if self.terminalWindow is not None:
@@ -1452,10 +1493,11 @@ class DeleteableCheckBox(QCheckBox):
             
             
 class ConfigWindow(QWidget):
-    def  __init__(self, window_icon, serial_thread):
+    def  __init__(self, window_icon, serial_thread, service):
         super().__init__()
         self.serial_thread = serial_thread
         self.window_icon = window_icon
+        self.service = service
 
         # self.setContentsMargins(350, 350, 350, 350)
         
@@ -1601,8 +1643,8 @@ class ConfigWindow(QWidget):
             msg_box.exec()
             return
         
-        """Save data from GUI elements into Excel file"""
-        filename = "ConfigurationData.xlsx"
+        """Save data from GUI elements into Google SPreadSheet"""
+        # filename = "ConfigurationData.xlsx"
         timestamp = datetime.datetime.now()
         # Format timestamp as string
         formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
@@ -1611,11 +1653,9 @@ class ConfigWindow(QWidget):
         testing = "OK"
         configured = self.configured_by.currentText()
 
-        data = [["Date Time", "Serial Number", "Model Number", "Testing", "Configured and Tested By"],
-                [formatted_timestamp, serial_number, device_type, testing, configured]
-               ]
+        data = [[formatted_timestamp, serial_number, device_type, testing, configured]]
 
-        self.write_into_excel(filename, data)
+        self.write_into_GoogleSheet(data)
         
         # Perform time-consuming operations in a separate thread
         threading.Thread(target=self.send_configuration_data).start()
@@ -1648,29 +1688,43 @@ class ConfigWindow(QWidget):
         global currentState
         currentState = STATE.CONNECTED.value
 
-    def  write_into_excel(self, filename, data):
+    def  write_into_GoogleSheet(self, data):
+        # try:
+        #     workbook = load_workbook(filename)
+        #     sheet = workbook.active
+        # except FileNotFoundError:
+        #     workbook = Workbook()
+        #     sheet = workbook.active
+
+        # # Extract existing data
+        # existing_data = [list(row) for row in sheet.iter_rows(values_only=True)]
+        
+        # # Find the next available row
+        # next_row = sheet.max_row + 1
+        
+        # # Write data to the Excel sheet if it doesn't already exist
+        # for row_data in data:
+        #     if row_data not in existing_data:
+        #         sheet.append(row_data)
+        
+        # # Save the workbook
+        # workbook.save(filename)
+
+        # # self.parent().statusbar.showMessage("Data saved successfully!")
         try:
-            workbook = load_workbook(filename)
-            sheet = workbook.active
-        except FileNotFoundError:
-            workbook = Workbook()
-            sheet = workbook.active
+            sheet = self.service.spreadsheets()
+            values = data
+            body = {'values': values}
+            result = sheet.values().append(
+                spreadsheetId=DATABASE_SPREADSHEET_ID,
+                range=DATABASE_RANGE_NAME,
+                valueInputOption="USER_ENTERED",
+                body=body
+            ).execute()
+            print(f"Data successfully written to Google Sheets: {result}")
+        except Exception as e:
+            print(f"Error writing to Google Sheets: {e}")
 
-        # Extract existing data
-        existing_data = [list(row) for row in sheet.iter_rows(values_only=True)]
-        
-        # Find the next available row
-        next_row = sheet.max_row + 1
-        
-        # Write data to the Excel sheet if it doesn't already exist
-        for row_data in data:
-            if row_data not in existing_data:
-                sheet.append(row_data)
-        
-        # Save the workbook
-        workbook.save(filename)
-
-        # self.parent().statusbar.showMessage("Data saved successfully!")
 
 
 class PasswordLineEdit(QWidget):
