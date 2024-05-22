@@ -52,6 +52,11 @@ AUTHENTICATE_SPREADSHEET_ID = '1nBTVFEzVT6J5mbsFH935il6Byd60TCtUmU6Sx2vZjGc'
 AUTHENTICATE_RANGE_NAME = 'Sheet1!A1:B'
 DATABASE_SPREADSHEET_ID = '1ah5PPkq_2XMqDL99uXZdQ1oDzulAEWxfmiFCQ_ffsdw'
 DATABASE_RANGE_NAME = 'Sheet1!A1:E1'
+DATABASE_RANGE_NAME1 = 'Sheet2!A1:B'
+DATABASE_RANGE_NAME2 = 'Sheet3!A1:B'
+DATABASE_RANGE_NAME3 = 'Sheet4!A1:B'
+DATABASE_RANGE_NAME4 = 'Sheet5!A1:B'
+
 
 
 class HandPointerMessageBox(QMessageBox):
@@ -185,15 +190,16 @@ class LoginWindow(QMainWindow):
         self.message.setStyleSheet("color: green; font-weight: bold; font-size: 16px")
         self.username_label = QLabel("Username:")
         self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Enter Username")
         self.username_input.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
 
         self.password_label = QLabel("Password:")
-        self.password_input = QLineEdit()
-        self.password_input.setStyleSheet("QLineEdit { background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input = PasswordLineEdit()
+        self.password_input.password_edit.setPlaceholderText("Enter Password")
+        self.password_input.password_edit.setText(None)
 
         self.login_button = QPushButton("Login")
-        self.login_button.setFixedSize(60, 30)
+        self.login_button.setFixedSize(70, 35)
         self.login_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.login_button.setStyleSheet(
             """
@@ -214,33 +220,12 @@ class LoginWindow(QMainWindow):
         # self.login_button.setGeometry(200, 200, 200, 200)
         self.login_button.clicked.connect(self.handle_login)
 
-        # self.sign_up_button = QPushButton("Register")
-        # self.sign_up_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        # self.sign_up_button.setStyleSheet(
-        #     """
-        #     QPushButton {
-        #         background-color: white;
-        #         border: None;
-        #         border-radius: 15px; 
-        #         padding: 8px 16px;
-        #         font-size: 12px;
-        #     }
-
-        #     QPushButton:hover {
-        #         background-color: #FFFFFF; 
-        #         border-color: grey; 
-        #     }
-        #     """
-        # )
-        # self.sign_up_button.setFixedSize(80, 30)
-
         layout.addWidget(self.message, 0, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.username_label, 1, 0)
         layout.addWidget(self.username_input, 2, 0)
         layout.addWidget(self.password_label, 3, 0)
         layout.addWidget(self.password_input, 4, 0)
         layout.addWidget(self.login_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignCenter)
-        # layout.addWidget(self.sign_up_button, 5, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignRight)
 
         # Create a central widget and set the layout
         central_widget = QWidget()
@@ -254,8 +239,6 @@ class LoginWindow(QMainWindow):
 
     def on_auth_finished(self, service):
         self.service = service
-        # self.progress_dialog.hide()
-        # self.login_button.setEnabled(True)
 
     def handle_login(self):
         if not self.service:
@@ -263,7 +246,7 @@ class LoginWindow(QMainWindow):
             return
         
         username = self.username_input.text()
-        password = self.password_input.text()
+        password = self.password_input.password_edit.text()
 
         # Check if the user exists in the Google Sheet
         user_exists = self.check_user_in_sheet(username, password)
@@ -278,6 +261,7 @@ class LoginWindow(QMainWindow):
             sheet = self.service.spreadsheets()
             result = sheet.values().get(spreadsheetId=AUTHENTICATE_SPREADSHEET_ID, range=AUTHENTICATE_RANGE_NAME).execute()
             values = result.get('values', [])
+            # print(values)
             for row in values:
                 if len(row) >= 2 and row[0] == username and row[1] == password:
                     return True
@@ -311,17 +295,11 @@ class  SerialMonitor(QMainWindow):
             self.informationwindow = None
             self.programWindow = None
 
-            # self.connection_action = QWidget()
-            # self.setCentralWidget(self.connection_action)
-
             self.comboBox = QComboBox()
             self.comboBox.setCursor(Qt.CursorShape.PointingHandCursor)
             self.comboBox.setStyleSheet("background-color: white")
 
             self.comboBox.setPlaceholderText("Select COM Port...")
-            
-            # self.layoutwidget = QHBoxLayout(self.connection_action)
-            # self.layoutwidget.addWidget(self.comboBox)
 
             self.addComboBoxToMenuBar()
 
@@ -334,11 +312,7 @@ class  SerialMonitor(QMainWindow):
             self.baudrate = QComboBox()
             self.baudrate.setCursor(Qt.CursorShape.PointingHandCursor)
             self.baudrate.setStyleSheet("background-color: white;")
-            # self.baudrate.setPlaceholderText("Select Baudrate...")
-            # self.layoutwidget.addWidget(self.baudrate)
             baudrates = ["115200", "9600"]
-            # for baudrate in baudrates:
-            #     self.baudrate.addItem(baudrate)
             self.baudrate.addItems(baudrates)
 
             self.addBaudrateToMenuBar()
@@ -462,10 +436,6 @@ class  SerialMonitor(QMainWindow):
             self.window_icon = QIcon(self.image_load.load_image("icon\logo.png").scaled(60, 60))
             self.setWindowIcon(self.window_icon)
 
-            # self.programWindow = ProgramWindow(self.window_icon, self.image_load, self.statusbar)
-
-            # self.loginwindow = LoginWindow(self.window_icon)
-
         except AttributeError as e:
             # Handle the AttributeError appropriately
             print(f"AttributeError occurred: {e}")
@@ -474,13 +444,13 @@ class  SerialMonitor(QMainWindow):
         # Style the buttons
         button_style = """
             QPushButton {
-                background-color: #add8e6; 
-                border: 2px; 
+                background-color: white; 
+                border: 2px solid gray; 
                 border-radius: 10px; 
                 padding: 0 8px; 
             }
             QPushButton:hover {
-                background-color: #D4F1F4; /* Darker green on hover */
+                background-color: #179FAB; 
             }
         """
         self.programbutton.setStyleSheet(button_style)
@@ -493,13 +463,13 @@ class  SerialMonitor(QMainWindow):
         # Style the toolbar buttons (QToolButton) associated with QActions
         toolbar_style = """
             QToolButton {
-                background-color: #add8e6; 
-                border: 2px; 
+                background-color: white; 
+                border: 2px solid gray; 
                 border-radius: 10px; 
                 padding: 0 8px; 
             }
             QToolButton:hover {
-                background-color: #D4F1F4; /* Darker green on hover */
+                background-color: #179FAB; 
             }
         """
         self.findChildren(QToolBar)[0].setStyleSheet(toolbar_style)
@@ -575,14 +545,6 @@ class  SerialMonitor(QMainWindow):
             msg_box.exec()
             return
         
-        # if not self.selected_baudrate:
-        #     msg_box = HandPointerMessageBox()
-        #     msg_box.setWindowTitle("Warning")
-        #     msg_box.setText("Please select a baudrate.")
-        #     msg_box.setIcon(QMessageBox.Icon.Warning)
-        #     msg_box.exec()
-        #     return
-        
         # Create and start the serial thread
         self.serial_thread = SerialThread(self.selected_port, self.selected_baudrate)
         self.serial_thread.received.connect(self.on_data_received)  # Connect signal to data received slot   
@@ -604,8 +566,7 @@ class  SerialMonitor(QMainWindow):
     def send_data_toGetMode(self):
         time.sleep(2)
         self.serial_thread.send_data("HRMS-1810" + "\n")
-        # global currentState
-        # currentState = STATE.GETMODE.value
+
 
     def on_data_received(self, data):
         # Append received data to the QTextEdit box of TerminalWindow
@@ -620,43 +581,61 @@ class  SerialMonitor(QMainWindow):
             print(f"Attribute Error in terminal window method call: {str(e)}")
 
         if currentState == STATE.CONNECTED.value:
+            # self.informationwindow.table = None
             if "Holmium Technologies" in self.data[1:22]:
                 self.informationwindow = InformationWindow()
                 self.setCentralWidget(self.informationwindow)
 
             elif "serialNo" in self.data.split(":")[0]:
-                row = 0
-                col = 1
-                if row < self.informationwindow.table.rowCount():
-                    items = self.informationwindow.table.item(row, col)
-                    if items is None:
-                        value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
-                        # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        # value.setData(Qt.)
-                        self.informationwindow.table.setItem(row, col, value)
+                try:
+                    try:
+                        row = 0
+                        col = 1
+                        if row < self.informationwindow.table.rowCount():
+                            items = self.informationwindow.table.item(row, col)
+                            if items is None:
+                                value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
+                                # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                                # value.setData(Qt.)
+                                self.informationwindow.table.setItem(row, col, value)
+                    except RuntimeError as e:
+                        print(e)
+                except AttributeError as e:
+                    print(e)
                         
-
             elif "modelNo" in self.data.split(":")[0]:
-                row = 1
-                col = 1
-                if row < self.informationwindow.table.rowCount():
-                    items = self.informationwindow.table.item(row, col)
-                    if items is None:
-                        value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
-                        # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        # value.setData(Qt.)
-                        self.informationwindow.table.setItem(row, col, value)
+                try:
+                    try:
+                        row = 1
+                        col = 1
+                        if row < self.informationwindow.table.rowCount():
+                            items = self.informationwindow.table.item(row, col)
+                            if items is None:
+                                value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
+                                # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                                # value.setData(Qt.)
+                                self.informationwindow.table.setItem(row, col, value)
+                    except RuntimeError as e:
+                        print(e)
+                except AttributeError as e:
+                    print(e)
 
             elif "firmwareVersion" in self.data.split(":")[0]:
-               row = 2
-               col = 1
-               if row < self.informationwindow.table.rowCount():
-                    items = self.informationwindow.table.item(row, col)
-                    if items is None:
-                        value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
-                        # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        # value.setData(Qt.)
-                        self.informationwindow.table.setItem(row, col, value)
+                try:
+                    try:
+                        row = 2
+                        col = 1
+                        if row < self.informationwindow.table.rowCount():
+                                items = self.informationwindow.table.item(row, col)
+                                if items is None:
+                                    value = QTableWidgetItem("   " + self.data.split(":")[1].strip())
+                                    # value.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                                    # value.setData(Qt.)
+                                    self.informationwindow.table.setItem(row, col, value)
+                    except RuntimeError as e:
+                        print(e)
+                except AttributeError as e:
+                    print(e)
 
             elif "Enter 1: TO ENTER TEST MODE" in self.data:
                 self.config.setEnabled(True)
@@ -1134,41 +1113,40 @@ class InformationWindow(QWidget):
     """Information Window class for displaying information about the DataLogger"""
     def __init__(self):
         super().__init__()
-        # Set up the window layout
-        self.setContentsMargins(0, 0, 172, 172)
-        self.information_layout = QGridLayout()
+        try:
+            # self.table = None
+            # Set up the window layout
+            self.setContentsMargins(0, 0, 172, 172)
+            self.information_layout = QGridLayout()
 
-        self.table = QTableWidget()
-        # self.table.setRowCount(3)
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(("Item", "Value"))
-        self.table.horizontalHeader().setStyleSheet("font-weight: bold")
-        # self.table.setVerticalHeaderLabels(("Serial No.", "Model No.", "Firmware Version"))
-        self.table.verticalHeader().setVisible(False)
-        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.table.viewport().setAutoFillBackground(False)
+            self.table = QTableWidget()
+            # self.table.setRowCount(3)
+            self.table.setColumnCount(2)
+            self.table.setHorizontalHeaderLabels(("Item", "Value"))
+            self.table.horizontalHeader().setStyleSheet("font-weight: bold")
 
-        # self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # Allow table to expand vertically
-        # self.table.setMinimumHeight(0)  # Remove any minimum height constraints
+            self.table.verticalHeader().setVisible(False)
+            self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.table.viewport().setAutoFillBackground(False)
 
-        self.table.horizontalHeader().setStretchLastSection(True)
-        # self.table.verticalHeader().setStretchLastSection(True)
-        # self.table.setMinimumHeight(50)
+            self.table.horizontalHeader().setStretchLastSection(True)
 
-        self.information_layout.addWidget(self.table, 0, 0)
+            self.information_layout.addWidget(self.table, 0, 0)
 
-        self.predefined_values = ["Serial No", "Model No", "Firmware Version"]
-        for i, value in enumerate(self.predefined_values):
-            self.table.insertRow(i)
-            item = QTableWidgetItem(value)
-            item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # Make cells read-only
-            self.table.setItem(i, 0, item)
+            self.predefined_values = ["Serial No", "Model No", "Firmware Version"]
+            for i, value in enumerate(self.predefined_values):
+                self.table.insertRow(i)
+                item = QTableWidgetItem(value)
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # Make cells read-only
+                self.table.setItem(i, 0, item)
 
-        self.table.resizeRowsToContents()
-        # self.table.resizeColumnsToContents()
+            self.table.resizeRowsToContents()
+            # self.table.resizeColumnsToContents()
 
-        self.setLayout(self.information_layout)
+            self.setLayout(self.information_layout)
+        except AttributeError as e:
+            print(e)
 
 
 class AboutDialog(QMessageBox):
@@ -1180,7 +1158,7 @@ class AboutDialog(QMessageBox):
         content = """
 HTCU: HRMS Testing & Config Utility Software
 Used for Uploading Firmware, Testing & Config the device
-Version: HTCU-V1.0.0
+Version: HTCU-V1.0.1s
 Developed By: Holmium technologies Pvt Ltd
 Released Date: 03/04/2024
 
@@ -1523,18 +1501,47 @@ class ConfigWindow(QWidget):
         # self.update_subdevices(self.device_combo.currentIndex())
 
         serial_number = QLabel("Serial No.")
-        self.serial_no = QLineEdit()
-        self.serial_no.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+        self.serial_no = QComboBox()
+        self.serial_no.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.serial_no.setPlaceholderText("Enter Serial Number")
         layout.addWidget(serial_number, 1, 0)
         layout.addWidget(self.serial_no, 1, 1)
+
+        self.add_serialno()
+
+        pcb_partnumber = QLabel("PCB Part Number")
+        self.pcb_number = QComboBox()
+        self.pcb_number.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+        self.pcb_number.setPlaceholderText("Enter PCB Part Number")
+        layout.addWidget(pcb_partnumber, 2, 0)
+        layout.addWidget(self.pcb_number, 2, 1)
+
+        self.add_pcbpartnumber()
+
+        gsm_partnumber = QLabel("GSM Part Number")
+        self.gsm_number = QComboBox()
+        self.gsm_number.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+        self.gsm_number.setPlaceholderText("Enter GSM Part Number")
+        layout.addWidget(gsm_partnumber, 3, 0)
+        layout.addWidget(self.gsm_number, 3, 1)
+
+        self.add_gsmpartnumber()
+
+        ethernet_partnumber = QLabel("Ethernet Part Number")
+        self.ethernet_number = QComboBox()
+        self.ethernet_number.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
+        self.ethernet_number.setPlaceholderText("Enter Ethernet Part Number")
+        layout.addWidget(ethernet_partnumber, 4, 0)
+        layout.addWidget(self.ethernet_number, 4, 1)
+
+        self.add_ethernetpartnumber()
 
         password = QLabel("Password")
         self.password = PasswordLineEdit()
         self.password.setStyleSheet("background-color: white")
         # self.password.setPlaceholderText("Enter Password")
-        layout.addWidget(password, 2, 0)
-        layout.addWidget(self.password, 2, 1, 1, 1)
+        layout.addWidget(password, 5, 0)
+        layout.addWidget(self.password, 5, 1)
 
         configured = QLabel("Configured and Tested By: ")
         self.configured_by = QComboBox()
@@ -1542,8 +1549,8 @@ class ConfigWindow(QWidget):
         self.configured_by.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         Users = ["Satish", "Arun", "Rizwan", "khushbu", "Surya", "Jacob", "Sidharth", "Kishan", "Sandeep"]
         self.configured_by.addItems(Users)
-        layout.addWidget(configured, 3, 0)
-        layout.addWidget(self.configured_by, 3, 1)
+        layout.addWidget(configured, 6, 0)
+        layout.addWidget(self.configured_by, 6, 1)
 
         self.configure = QPushButton("Configure")
         self.configure.setStyleSheet(
@@ -1565,29 +1572,7 @@ class ConfigWindow(QWidget):
         self.configure.setFixedSize(88,30)
         self.configure.setCursor(Qt.CursorShape.PointingHandCursor)
         self.configure.clicked.connect(self.on_configure_clicked)
-        layout.addWidget(self.configure,  4, 3)
-
-        # export_to_excel = QPushButton("Export to CSV")
-        # export_to_excel.setStyleSheet(
-        #             """
-        #     QPushButton {
-        #         background-color: white;
-        #         border: None;
-        #         border-radius: 20px; 
-        #         padding: 8px 16px;
-        #         font-size: 18px;
-        #     }
-
-        #     QPushButton:hover {
-        #         background-color: #FFFFFF; 
-        #         border-color: grey; 
-        #     }
-        #     """
-        # )
-        # export_to_excel.setCursor(Qt.CursorShape.PointingHandCursor)
-        # export_to_excel.setToolTip('Save data as a csv file')
-        # layout.addWidget(export_to_excel, 4, 0)
-        # export_to_excel.clicked.connect(self.save_dataToCSVFile)
+        layout.addWidget(self.configure,  7, 3)
 
         self.setLayout(layout)
 
@@ -1600,6 +1585,102 @@ class ConfigWindow(QWidget):
     #         self.subdevice_combo.hide()
     #     elif index == 3:
     #         self.subdevice_combo.hide()
+
+    def add_serialno(self):
+        try:
+            self.sheet = self.service.spreadsheets()
+            self.result = self.sheet.values().get(spreadsheetId=DATABASE_SPREADSHEET_ID, range=DATABASE_RANGE_NAME1).execute()
+            self.values_serial = self.result.get('values', [])
+            
+            if not self.values_serial:
+                print("No data found in the specified range.")
+                return
+            
+            self.headers = self.values_serial[0]  # Assume the first row is the header
+            self.data_rows_serial = self.values_serial[1:]  # The rest are data rows
+
+            for row in self.data_rows_serial:
+                try:
+                    if int(row[1]) == 0:  # Ensure row[1] is an integer and equals 0
+                        self.serial_no.addItem(row[0])
+                except ValueError:
+                    # Skip rows where row[1] is not an integer
+                    continue
+
+        except Exception as e:
+            print(f"Error fetching data from Google Sheets: {e}")
+
+    def add_pcbpartnumber(self):
+        try:
+            # sheet = self.service.spreadsheets()
+            self.result = self.sheet.values().get(spreadsheetId=DATABASE_SPREADSHEET_ID, range=DATABASE_RANGE_NAME2).execute()
+            values = self.result.get('values', [])
+            
+            if not values:
+                print("No data found in the specified range.")
+                return
+            
+            headers = values[0]  # Assume the first row is the header
+            self.data_rows_pcb = values[1:]  # The rest are data rows
+
+            for row in self.data_rows_pcb:
+                try:
+                    if int(row[1]) == 0:  # Ensure row[1] is an integer and equals 0
+                        self.pcb_number.addItem(row[0])
+                except ValueError:
+                    # Skip rows where row[1] is not an integer
+                    continue
+
+        except Exception as e:
+            print(f"Error fetching data from Google Sheets: {e}")
+
+    def add_gsmpartnumber(self):
+        try:
+            # sheet = self.service.spreadsheets()
+            result = self.sheet.values().get(spreadsheetId=DATABASE_SPREADSHEET_ID, range=DATABASE_RANGE_NAME3).execute()
+            values = result.get('values', [])
+            
+            if not values:
+                print("No data found in the specified range.")
+                return
+            
+            headers = values[0]  # Assume the first row is the header
+            self.data_rows_gsm = values[1:]  # The rest are data rows
+
+            for row in self.data_rows_gsm:
+                try:
+                    if int(row[1]) == 0:  # Ensure row[1] is an integer and equals 0
+                        self.gsm_number.addItem(row[0])
+                except ValueError:
+                    # Skip rows where row[1] is not an integer
+                    continue
+
+        except Exception as e:
+            print(f"Error fetching data from Google Sheets: {e}")
+
+    def add_ethernetpartnumber(self):
+        try:
+            # sheet = self.service.spreadsheets()
+            result = self.sheet.values().get(spreadsheetId=DATABASE_SPREADSHEET_ID, range=DATABASE_RANGE_NAME4).execute()
+            values = result.get('values', [])
+            
+            if not values:
+                print("No data found in the specified range.")
+                return
+            
+            headers = values[0]  # Assume the first row is the header
+            self.data_rows_ethernet = values[1:]  # The rest are data rows
+
+            for row in self.data_rows_ethernet:
+                try:
+                    if int(row[1]) == 0:  # Ensure row[1] is an integer and equals 0
+                        self.ethernet_number.addItem(row[0])
+                except ValueError:
+                    # Skip rows where row[1] is not an integer
+                    continue
+
+        except Exception as e:
+            print(f"Error fetching data from Google Sheets: {e}")
         
     def on_configure_clicked(self):
         # print("configure clicked")
@@ -1614,15 +1695,52 @@ class ConfigWindow(QWidget):
             msg_box.exec()
             return
 
-        serial_pattern = re.compile(r'^((HO-[\w\d]+$)|(HRMS-E32-\d+$))')
-        if not serial_pattern.match(self.serial_no.text()):
+        # serial_pattern = re.compile(r'^((HO-[\w\d]+$)|(HRMS-E32-\d+$))')
+        # if not serial_pattern.match(self.serial_no.text()):
+        #     msg_box = HandPointerMessageBox()
+        #     msg_box.setWindowTitle("Warning")
+        #     msg_box.setWindowIcon(self.window_icon)
+        #     msg_box.setText("Serial No. format should be HO/HRMS- followed by Character or Digits.")
+        #     msg_box.setIcon(QMessageBox.Icon.Warning)
+        #     msg_box.exec()
+        #     return
+
+        if not self.serial_no.currentText():
             msg_box = HandPointerMessageBox()
             msg_box.setWindowTitle("Warning")
             msg_box.setWindowIcon(self.window_icon)
-            msg_box.setText("Serial No. format should be HO/HRMS- followed by Character or Digits.")
+            msg_box.setText("Incorrect Serial No. Please Select the Serial No."   )
             msg_box.setIcon(QMessageBox.Icon.Warning)
             msg_box.exec()
             return
+        
+        if not self.pcb_number.currentText():
+            msg_box = HandPointerMessageBox()
+            msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
+            msg_box.setText("Incorrect PCB part number. Please Select the PCB part No."   )
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.exec()
+            return
+        
+        if not self.gsm_number.currentText():
+            msg_box = HandPointerMessageBox()
+            msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
+            msg_box.setText("Incorrect GSM part number. Please Select the GSM part No."   )
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.exec()
+            return
+        
+        if not self.ethernet_number.currentText():
+            msg_box = HandPointerMessageBox()
+            msg_box.setWindowTitle("Warning")
+            msg_box.setWindowIcon(self.window_icon)
+            msg_box.setText("Incorrect Ehternet part number. Please Select the Ethernet part No."   )
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.exec()
+            return
+
 
         # Validate Password
         if self.password.password_edit.text() != "HO-1810":
@@ -1648,12 +1766,15 @@ class ConfigWindow(QWidget):
         timestamp = datetime.datetime.now()
         # Format timestamp as string
         formatted_timestamp = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        serial_number = self.serial_no.text()
+        self.serial_number = self.serial_no.currentText()
         device_type = self.device_combo.currentText()
         testing = "OK"
         configured = self.configured_by.currentText()
+        self.pcb_number = self.pcb_number.currentText()
+        self.gsm_number = self.gsm_number.currentText()
+        self.ethernet_number = self.ethernet_number.currentText()
 
-        data = [[formatted_timestamp, serial_number, device_type, testing, configured]]
+        data = [[formatted_timestamp, self.serial_number, device_type, testing, configured, self.pcb_number, self.gsm_number, self.ethernet_number]]
 
         self.write_into_GoogleSheet(data)
         
@@ -1663,7 +1784,7 @@ class ConfigWindow(QWidget):
 
     def send_configuration_data(self):
         # if "Enter New Serial No" in self.parent().data:
-        serial_number = self.serial_no.text() + "\n"
+        serial_number = self.serial_no.currentText() + "\n"
         self.serial_thread.send_data(serial_number)
         time.sleep(2)
             # pass
@@ -1711,11 +1832,12 @@ class ConfigWindow(QWidget):
         # workbook.save(filename)
 
         # # self.parent().statusbar.showMessage("Data saved successfully!")
+        """Saving data into the Google Sheet"""
         try:
-            sheet = self.service.spreadsheets()
+            # self.sheet = self.service.spreadsheets()
             values = data
             body = {'values': values}
-            result = sheet.values().append(
+            result = self.sheet.values().append(
                 spreadsheetId=DATABASE_SPREADSHEET_ID,
                 range=DATABASE_RANGE_NAME,
                 valueInputOption="USER_ENTERED",
@@ -1726,6 +1848,102 @@ class ConfigWindow(QWidget):
             print(f"Error writing to Google Sheets: {e}")
 
 
+        """Updating the Status flag of Serial Number Google sheets"""
+        # Find the matching row for the serial number and update the second column
+        row_to_update = None
+        for index, row in enumerate(self.data_rows_serial):
+            if row[0] == self.serial_number:
+                row_to_update = index + 2  # Adding 2 to account for header row and 0-indexing
+                break
+        if row_to_update is not None:
+            try:
+                range_to_update = f"Sheet2!B{row_to_update}"  # Adjust the sheet name and column as necessary
+                value_input_option = "RAW"
+                value_range_body = {
+                    "values": [[1]]  # The value to update the cell with
+                }
+                self.sheet.values().update(
+                    spreadsheetId=DATABASE_SPREADSHEET_ID,
+                    range=range_to_update,
+                    valueInputOption=value_input_option,
+                    body=value_range_body
+                ).execute()
+                print(f"Data successfully updated to Serial Number Google Sheets: {result}")
+            except Exception as e:
+                print(f"Error updating to google sheets: {e}")
+                
+
+        """Updating the Status flag of PCB Part Number Google sheets"""
+        pcbrow_to_update = None
+        for index, row in enumerate(self.data_rows_pcb):
+            if row[0] == self.pcb_number:
+                pcbrow_to_update = index + 2  # Adding 2 to account for header row and 0-indexing
+                break
+        if pcbrow_to_update is not None:
+            try:
+                pcbrange_to_update = f"Sheet3!B{pcbrow_to_update}"  # Adjust the sheet name and column as necessary
+                pcbvalue_input_option = "RAW"
+                pcbvalue_range_body = {
+                    "values": [[1]]  # The value to update the cell with
+                }
+                self.sheet.values().update(
+                    spreadsheetId=DATABASE_SPREADSHEET_ID,
+                    range=pcbrange_to_update,
+                    valueInputOption=pcbvalue_input_option,
+                    body=pcbvalue_range_body
+                ).execute()
+                print(f"Data successfully updated to PCB Part Number Google Sheets: {result}")
+            except Exception as e:
+                print(f"Error updating to google sheets: {e}")
+
+        
+        """Updating the Status flag of GSM Part Number Google sheets"""
+        gsmrow_to_update = None
+        for index, row in enumerate(self.data_rows_gsm):
+            if row[0] == self.gsm_number:
+                gsmrow_to_update = index + 2  # Adding 2 to account for header row and 0-indexing
+                break
+        if gsmrow_to_update is not None:
+            try:
+                gsmrange_to_update = f"Sheet4!B{gsmrow_to_update}"  # Adjust the sheet name and column as necessary
+                gsmvalue_input_option = "RAW"
+                gsmvalue_range_body = {
+                    "values": [[1]]  # The value to update the cell with
+                }
+                self.sheet.values().update(
+                    spreadsheetId=DATABASE_SPREADSHEET_ID,
+                    range=gsmrange_to_update,
+                    valueInputOption=gsmvalue_input_option,
+                    body=gsmvalue_range_body
+                ).execute()
+                print(f"Data successfully updated to GSM Part Number Google Sheets: {result}")
+            except Exception as e:
+                print(f"Error updating to google sheets: {e}")
+
+        
+        """Updating the Status flag of Ethernet Part Number Google sheets"""
+        ethernetrow_to_update = None
+        for index, row in enumerate(self.data_rows_ethernet):
+            if row[0] == self.ethernet_number:
+                ethernetrow_to_update = index + 2  # Adding 2 to account for header row and 0-indexing
+                break
+        if ethernetrow_to_update is not None:
+            try:
+                ethernetrange_to_update = f"Sheet5!B{ethernetrow_to_update}"  # Adjust the sheet name and column as necessary
+                ethernetvalue_input_option = "RAW"
+                ethernetvalue_range_body = {
+                    "values": [[1]]  # The value to update the cell with
+                }
+                self.sheet.values().update(
+                    spreadsheetId=DATABASE_SPREADSHEET_ID,
+                    range=ethernetrange_to_update,
+                    valueInputOption=ethernetvalue_input_option,
+                    body=ethernetvalue_range_body
+                ).execute()
+                print(f"Data successfully updated to Ethernet Part Number Google Sheets: {result}")
+            except Exception as e:
+                print(f"Error updating to google sheets: {e}")
+            
 
 class PasswordLineEdit(QWidget):
     def __init__(self):
@@ -1784,6 +2002,8 @@ class TestWindow(QWidget):
         self.image_load = image_load
         self.terminalWindow = terminalWindow
 
+        # self.setContentsMargins(300, 00, 300, 300)
+
         layout = QGridLayout()
 
         self.movie_label = QLabel()
@@ -1816,7 +2036,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1826,6 +2046,7 @@ class TestWindow(QWidget):
             """
         )
         self.testrtc.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testrtc.setFixedSize(120, 30)
         layout.addWidget(self.testrtc, 0, 0)
         self.testrtc.clicked.connect(self.test_RTC)
 
@@ -1837,7 +2058,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1847,6 +2068,7 @@ class TestWindow(QWidget):
             """
         )
         self.testgsm.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testgsm.setFixedSize(120, 30)
         layout.addWidget(self.testgsm, 0, 1)
         self.testgsm.clicked.connect(self.test_GSM)
 
@@ -1858,7 +2080,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1868,6 +2090,7 @@ class TestWindow(QWidget):
             """
         )
         self.testwifi.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testwifi.setFixedSize(120, 30)
         layout.addWidget(self.testwifi, 1, 0)
         self.testwifi.clicked.connect(self.test_WiFi)
 
@@ -1879,7 +2102,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1889,6 +2112,7 @@ class TestWindow(QWidget):
             """
         )
         self.testethernet.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testethernet.setFixedSize(120, 30)
         layout.addWidget(self.testethernet, 1, 1)
         self.testethernet.clicked.connect(self.test_Ethernet)
 
@@ -1900,7 +2124,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1910,6 +2134,7 @@ class TestWindow(QWidget):
             """
         )
         self.testsdcard.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testsdcard.setFixedSize(120, 30)
         layout.addWidget(self.testsdcard, 2, 0)
         self.testsdcard.clicked.connect(self.test_SDCard)
 
@@ -1921,7 +2146,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 11px;
             }
 
             QPushButton:hover {
@@ -1931,6 +2156,7 @@ class TestWindow(QWidget):
             """
         )
         self.testmodbusrtu.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testmodbusrtu.setFixedSize(120, 30)
         layout.addWidget(self.testmodbusrtu, 2, 1)
         self.testmodbusrtu.clicked.connect(self.test_ModbusRTU)
 
@@ -1942,7 +2168,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1952,6 +2178,7 @@ class TestWindow(QWidget):
             """
         )
         self.testmodbustcp.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testmodbustcp.setFixedSize(120, 30)
         layout.addWidget(self.testmodbustcp, 3, 0)
         self.testmodbustcp.clicked.connect(self.test_ModbusTCP)
 
@@ -1963,7 +2190,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1973,6 +2200,7 @@ class TestWindow(QWidget):
             """
         )
         self.testdi.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testdi.setFixedSize(120, 30)
         layout.addWidget(self.testdi, 3, 1)
         self.testdi.clicked.connect(self.test_DI)
 
@@ -1984,7 +2212,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -1994,6 +2222,7 @@ class TestWindow(QWidget):
             """
         )
         self.testai.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testai.setFixedSize(120, 30)
         layout.addWidget(self.testai, 4, 0)
         self.testai.clicked.connect(self.test_AI)
 
@@ -2005,7 +2234,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -2015,6 +2244,7 @@ class TestWindow(QWidget):
             """
         )
         self.testall.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.testall.setFixedSize(120, 30)
         layout.addWidget(self.testall, 4, 1)
         self.testall.clicked.connect(self.test_All)
 
@@ -2026,7 +2256,7 @@ class TestWindow(QWidget):
                 border: None;
                 border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -2036,7 +2266,8 @@ class TestWindow(QWidget):
             """
         )
         exittestmode.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout.addWidget(exittestmode, 5, 1)
+        exittestmode.setFixedSize(120, 30)
+        layout.addWidget(exittestmode, 5, 0, 1, 0, alignment=Qt.AlignmentFlag.AlignCenter)
         exittestmode.clicked.connect(self.exit_Test_mode)
 
         self.setLayout(layout)
@@ -2125,26 +2356,26 @@ class CalibrateAIWindow(QWidget):
 
         self.channel = QLabel('Channel: ')
         self.channel_number = QComboBox()
+        self.channel_number.setStyleSheet("QComboBox {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.channel_number.setPlaceholderText('Select Channel')
         self.channel_number.addItems(['0', '1', '2', '3'])
         self.channel_number.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.channel_number.setStyleSheet("background-color: white;")
 
         cali_layout.addWidget(self.channel, 0, 0)
         cali_layout.addWidget(self.channel_number, 0, 1)
 
         self.scale = QLabel("Scale Value: ")
         self.scale_value = QLineEdit()
+        self.scale_value.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.scale_value.setPlaceholderText("Enter Scale Value")
-        self.scale_value.setStyleSheet("background-color: white;")
 
         cali_layout.addWidget(self.scale, 1, 0)
         cali_layout.addWidget(self.scale_value, 1,  1)
 
         self.offset = QLabel("Offset: ")
         self.offset_value = QLineEdit()
+        self.offset_value.setStyleSheet("QLineEdit {background-color: white; border: 2px solid gray; border-radius: 10px; padding: 0 8px; }")
         self.offset_value.setPlaceholderText("Enter Offset Value")
-        self.offset_value.setStyleSheet("background-color: white;")
 
         cali_layout.addWidget(self.offset, 2, 0)
         cali_layout.addWidget(self.offset_value, 2,  1)
@@ -2156,9 +2387,9 @@ class CalibrateAIWindow(QWidget):
             QPushButton {
                 background-color: white;
                 border: None;
-                border-radius: 20px; 
+                border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -2167,6 +2398,7 @@ class CalibrateAIWindow(QWidget):
             }
             """
         )
+        self.calibrate_button.setFixedSize(80, 30)
         self.calibrate_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
         cali_layout.addWidget(self.calibrate_button, 3, 0)
@@ -2178,9 +2410,9 @@ class CalibrateAIWindow(QWidget):
             QPushButton {
                 background-color: white;
                 border: None;
-                border-radius: 20px; 
+                border-radius: 15px; 
                 padding: 8px 16px;
-                font-size: 18px;
+                font-size: 12px;
             }
 
             QPushButton:hover {
@@ -2189,6 +2421,7 @@ class CalibrateAIWindow(QWidget):
             }
             """
         )
+        self.exit_button.setFixedSize(150, 30)
         self.exit_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
         cali_layout.addWidget(self.exit_button, 3, 2)
