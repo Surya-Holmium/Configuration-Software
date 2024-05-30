@@ -1205,6 +1205,7 @@ class ShowDataWindow(QWidget):
         for index, value in enumerate(headers):
             self.showdata_table.insertColumn(index)
             self.showdata_table.setHorizontalHeaderItem(index, QTableWidgetItem(value))
+            self.showdata_table.resizeColumnToContents(index)
 
         for i, row_values in enumerate(data_values_fromsheet):
             self.showdata_table.insertRow(i)
