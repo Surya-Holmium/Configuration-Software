@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, \
      QLineEdit, QPushButton, QComboBox, QMainWindow, QHBoxLayout,QMessageBox, \
      QWidgetAction, QFileDialog, QTextEdit, QToolBar, QStatusBar, QSizePolicy, \
-     QGraphicsOpacityEffect, QCheckBox, QTableWidget, QTableWidgetItem, QDialog
+     QGraphicsOpacityEffect, QCheckBox, QTableWidget, QTableWidgetItem
 
 import threading
 import sys
@@ -12,7 +12,7 @@ from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QS
 import serial
 import subprocess
 import time
-import re
+# import re
 from openpyxl import Workbook, load_workbook
 import datetime
 import os
@@ -576,7 +576,7 @@ class  SerialMonitor(QMainWindow):
         
     def send_data_toGetMode(self):
         time.sleep(2)
-        self.serial_thread.send_data("HRMS-1810" + "\n")
+        self.serial_thread.send_data("Hol" + "\n")
 
 
     def on_data_received(self, data):
@@ -593,18 +593,27 @@ class  SerialMonitor(QMainWindow):
 
         if currentState == STATE.CONNECTED.value:
             # self.informationwindow.table = None
-            if "Holmium Technologies" in self.data[1:22]:
+            if "Serial No" in self.data.split(":")[0]:
                 self.informationwindow = InformationWindow()
                 self.setCentralWidget(self.informationwindow)
-
-            elif "serialNo" in self.data.split(":")[0]:
                 self.update_table_item(0, "Serial No")
 
-            elif "modelNo" in self.data.split(":")[0]:
-                self.update_table_item(1, "Model No")
+            # elif "serialNo" in self.data.split(":")[0]:
 
-            elif "firmwareVersion" in self.data.split(":")[0]:
-                self.update_table_item(2, "Firmware Version")
+            elif "Site id as" in self.data.split(":")[0]:
+                self.update_table_item(1, "Site Id As")
+
+            elif "Turbo Count" in self.data.split(":")[0]:
+                self.update_table_item(2, "Turbo Count")
+
+            elif "Firmware version" in self.data.split(":")[0]:
+                self.update_table_item(3, "Firmware Version")
+
+            elif "ADS pressure" in self.data.split(":")[0]:
+                self.update_table_item(4, "ADS Pressure")
+
+            elif "ADS temperature" in self.data.split(":")[0]:
+                self.update_table_item(5, "ADS Temperature")
 
             elif "Enter 1: TO ENTER TEST MODE" in self.data:
                 self.config.setEnabled(True)
@@ -1104,7 +1113,7 @@ class InformationWindow(QWidget):
 
             self.information_layout.addWidget(self.table, 0, 0)
 
-            self.predefined_values = ["Serial No", "Model No", "Firmware Version"]
+            self.predefined_values = ["Serial No", "Site Id As", "Turbo Count", "Firmware Version", "ADS Pressure", "ADS Temperature"]
             for i, value in enumerate(self.predefined_values):
                 self.table.insertRow(i)
                 item = QTableWidgetItem(value)
@@ -1940,7 +1949,7 @@ class ConfigWindow(QWidget):
     def send_data_after_Configuration(self):
         # if "E" in self.parent().data[:1]:
         time.sleep(5)
-        self.serial_thread.send_data("HRMS-1810" + "\n")
+        self.serial_thread.send_data("Hol" + "\n")
             
         global currentState
         currentState = STATE.CONNECTED.value
