@@ -1820,7 +1820,6 @@ class TerminalWindow(QWidget):
         def  __init__(self, data=None):
             super().__init__()
             self.data = data
-
             layout = QGridLayout()
 
             serial = QLabel("Serial Monitor: ")
