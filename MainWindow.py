@@ -9,7 +9,7 @@ from PyQt6.QtGui import QAction, QIcon, QPainter, QMovie, QPixmap, QBrush, QColo
 from serial.tools.list_ports import comports
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, QPropertyAnimation, Qt, QSettings, \
      QRect, Qt, QSize, pyqtSlot
-import serial
+import test
 import subprocess
 import time
 import re
@@ -75,27 +75,25 @@ class SerialThread(QThread):
         self.port = port
         self.baudrate = baudrate
         self.running = False
-        # self.error_handler = ErrorHandler()
 
     def run(self):
         self.running = True
         self.mySerial = False
         try:
-            self.ser = serial.Serial(port=self.port, baudrate=self.baudrate)
+            self.ser = test.Serial(port=self.port, baudrate=self.baudrate)
             self.mySerial = True
             self.ser.dtr = False
             self.ser.rts = False
-            # print("hi")
 
             while self.running:
                 if self.running:
                     value = self.ser.readline()
                     try:
                         valueString = str(value.decode('UTF-8', errors='ignore'))
-                        self.received.emit(valueString)  # Emit signal with received data
+                        self.received.emit(valueString)
                     except UnicodeDecodeError as e:
                         print("Unicode error: ", e)
-        except serial.SerialException as e:
+        except test.SerialException as e:
             print(f"Error connecting to {self.port}:{e}")
             self.received.emit(f"Error Connecting to {self.port}:{e}")
             
@@ -103,7 +101,6 @@ class SerialThread(QThread):
 
     def stop(self):
         self.running = False
-        # self.wait()
         if self.mySerial:
             self.ser.close()
 
@@ -575,7 +572,7 @@ class  SerialMonitor(QMainWindow):
         threading.Thread(target=self.send_data_toGetMode).start()
         
     def send_data_toGetMode(self):
-        time.sleep(2)
+        time.sleep(4)
         self.serial_thread.send_data("HRMS-1810" + "\n")
 
 
@@ -606,7 +603,7 @@ class  SerialMonitor(QMainWindow):
             elif "firmwareVersion" in self.data.split(":")[0]:
                 self.update_table_item(2, "Firmware Version")
 
-            elif "Enter 1: TO ENTER TEST MODE" in self.data:
+            elif "[Holmium Technologies Pvt. Ltd.]" in self.data:
                 self.config.setEnabled(True)
                 self.test.setEnabled(True)
                 self.calibrate_ai.setEnabled(True)
@@ -917,6 +914,9 @@ class  SerialMonitor(QMainWindow):
                 elif self.informationwindow is not None:
                     self.informationwindow.close()
                     self.informationwindow = None
+                elif self.terminalWindow is not None:
+                    self.terminalWindow.close()
+                    self.terminalWindow = None
                 else:
                     pass
             except RuntimeError as e:
@@ -948,6 +948,9 @@ class  SerialMonitor(QMainWindow):
                 elif self.informationwindow is not None:
                     self.informationwindow.close()
                     self.informationwindow = None
+                elif self.terminalWindow is not None:
+                    self.terminalWindow.close()
+                    self.terminalWindow = None
                 else:
                     pass
             except RuntimeError as e:
@@ -2620,5 +2623,4 @@ if  __name__ == "__main__":
     window = LoginWindow()
     window.setStyleSheet("background-color: #add8e6;")
     window.show()
-    # window.load_data_toScreen()
     sys.exit(app.exec())
